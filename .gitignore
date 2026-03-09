@@ -1,6 +1,5 @@
 # Dependencies
 node_modules/
-package-lock.json
 
 # Test files (Chrome doesn't allow _ prefixed folders)
 __tests__/
