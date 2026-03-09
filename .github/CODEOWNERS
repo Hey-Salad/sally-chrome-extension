@@ -1,0 +1,6 @@
+* @Hey-Salad/platform
+
+# Critical automation and policy-sensitive paths
+/background/* @Hey-Salad/platform
+/content-scripts/* @Hey-Salad/platform
+/manifest.json @Hey-Salad/platform

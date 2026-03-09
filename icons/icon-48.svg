@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="48" height="48" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#10b981;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#059669;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="48" height="48" rx="9.600000000000001" fill="url(#grad)"/>
+
+  <!-- Salad layers (3 horizontal lines representing lettuce/ingredients) -->
+  <g stroke="white" stroke-width="3.84" stroke-linecap="round">
+    <line x1="12" y1="16.799999999999997" x2="36" y2="16.799999999999997" opacity="0.8"/>
+    <line x1="12" y1="24" x2="36" y2="24"/>
+    <line x1="12" y1="31.200000000000003" x2="36" y2="31.200000000000003" opacity="0.8"/>
+  </g>
+</svg>

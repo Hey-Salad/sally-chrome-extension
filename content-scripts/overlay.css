@@ -1,0 +1,321 @@
+/**
+ * Sally by HeySalad® - Shopping Overlay Styles
+ */
+
+#heysalad-overlay {
+  position: fixed !important;
+  top: 16px !important;
+  left: 16px !important;
+  right: auto !important;
+  width: 320px;
+  background: rgba(255, 255, 255, 0.96);
+  border-radius: 18px;
+  box-shadow: 0 12px 36px rgba(15, 23, 42, 0.16);
+  z-index: 2147483647 !important;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  overflow: hidden;
+  transition: all 0.3s ease;
+  isolation: isolate;
+  backdrop-filter: blur(14px);
+  border: 1px solid rgba(224, 29, 29, 0.08);
+}
+
+#heysalad-overlay.minimized .heysalad-body {
+  display: none;
+}
+
+#heysalad-overlay.minimized {
+  width: 250px;
+}
+
+.heysalad-header {
+  background: rgba(255, 255, 255, 0.92);
+  color: #111827;
+  padding: 10px 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  user-select: none;
+  border-left: 4px solid #E01D1D;
+}
+
+.heysalad-title {
+  font-weight: 700;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.heysalad-title svg {
+  flex-shrink: 0;
+  color: #E01D1D;
+}
+
+.heysalad-title-text {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.heysalad-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.heysalad-open-panel {
+  border: none;
+  background: #E01D1D;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 8px 10px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.heysalad-open-panel:hover {
+  background: #c41919;
+}
+
+.heysalad-minimize {
+  background: #f3f4f6;
+  border: none;
+  color: #374151;
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.heysalad-minimize:hover {
+  background: #e5e7eb;
+}
+
+.heysalad-minimize svg {
+  stroke: #374151;
+}
+
+.heysalad-body {
+  padding: 16px;
+}
+
+.heysalad-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.heysalad-status-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: pulse 1.5s infinite;
+}
+
+.heysalad-status-icon svg {
+  stroke: #E01D1D;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.heysalad-status-text {
+  font-size: 13px;
+  color: #333;
+  font-weight: 500;
+}
+
+.heysalad-progress {
+  margin-bottom: 12px;
+}
+
+.heysalad-progress-bar {
+  height: 6px;
+  background: #eee;
+  border-radius: 3px;
+  overflow: hidden;
+  margin-bottom: 4px;
+}
+
+.heysalad-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #E01D1D, #ff6b6b);
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
+.heysalad-progress-text {
+  font-size: 11px;
+  color: #888;
+  text-align: right;
+}
+
+.heysalad-items {
+  max-height: 200px;
+  overflow-y: auto;
+  margin-bottom: 12px;
+}
+
+.heysalad-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+  border-bottom: 1px solid #f0f0f0;
+  font-size: 13px;
+}
+
+.heysalad-item:last-child {
+  border-bottom: none;
+}
+
+.heysalad-item-status {
+  width: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.heysalad-item-status svg {
+  width: 14px;
+  height: 14px;
+}
+
+.heysalad-item-status.added svg { stroke: #22c55e; }
+.heysalad-item-status.failed svg { stroke: #ef4444; }
+.heysalad-item-status.searching svg { stroke: #f59e0b; }
+.heysalad-item-status.pending svg { stroke: #9ca3af; }
+
+.heysalad-item-name {
+  flex: 1;
+  color: #333;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.heysalad-item-price {
+  color: #22c55e;
+  font-weight: 600;
+  font-size: 12px;
+}
+
+.heysalad-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.heysalad-btn {
+  flex: 1;
+  padding: 10px 16px;
+  border: none;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.heysalad-btn svg {
+  flex-shrink: 0;
+}
+
+.heysalad-btn-primary {
+  background: #E01D1D;
+  color: white;
+}
+
+.heysalad-btn-primary svg {
+  stroke: white;
+}
+
+.heysalad-btn-primary:hover {
+  background: #c41919;
+}
+
+.heysalad-btn-secondary {
+  background: #f3f4f6;
+  color: #374151;
+}
+
+.heysalad-btn-secondary svg {
+  stroke: #374151;
+}
+
+.heysalad-btn-secondary:hover {
+  background: #e5e7eb;
+}
+
+/* Toast notifications */
+.heysalad-toast {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 12px 24px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  z-index: 2147483647;
+  animation: slideUp 0.3s ease, fadeOut 0.3s ease 2.7s;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+.heysalad-toast.success {
+  background: #22c55e;
+  color: white;
+}
+
+.heysalad-toast.error {
+  background: #ef4444;
+  color: white;
+}
+
+@media (max-width: 640px) {
+  #heysalad-overlay {
+    top: 12px !important;
+    left: 12px !important;
+    width: min(260px, calc(100vw - 24px));
+  }
+}
+
+.heysalad-toast.info {
+  background: #3b82f6;
+  color: white;
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateX(-50%) translateY(20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(-50%) translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes fadeOut {
+  to {
+    opacity: 0;
+  }
+}

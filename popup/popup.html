@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=400, initial-scale=1.0">
+  <title>Sally by HeySalad®</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+    <!-- Header -->
+    <header class="header">
+      <h1>Sally</h1>
+      <span class="badge-brand">by HeySalad®</span>
+    </header>
+
+    <!-- Auth Section (shown when not logged in) -->
+    <section id="auth-section" class="section hidden">
+      <div class="auth-card">
+        <h2>Hey, I'm Sally! 👋</h2>
+        <p class="subtitle">Sign in to let me do your grocery shopping</p>
+        
+        <!-- Step 1: Email -->
+        <div id="email-step">
+          <form id="login-form">
+            <div class="input-group">
+              <label for="email">Email</label>
+              <input type="email" id="email" placeholder="you@example.com" required>
+            </div>
+            <button type="submit" class="btn btn-primary" id="login-btn">
+              <span>Sign In</span>
+            </button>
+          </form>
+        </div>
+        
+        <!-- Step 2: Waiting for magic link (after magic link sent) -->
+        <div id="token-step" class="hidden">
+          <div class="waiting-animation">
+            <div class="pulse-ring"></div>
+            <span class="waiting-icon">✉️</span>
+          </div>
+          <p class="success-msg">Check your email!</p>
+          <p class="hint">Click the magic link in your email. This window will update automatically when you're signed in.</p>
+          <p class="hint hint-small">💡 You can close this popup - we'll notify you when you're signed in!</p>
+          
+          <div class="divider">
+            <span>or paste token manually</span>
+          </div>
+          
+          <div class="input-group">
+            <label for="token">Token (from success page)</label>
+            <input type="text" id="token" placeholder="Paste token here if auto-detect fails...">
+          </div>
+          <button type="button" class="btn btn-secondary" id="verify-btn">
+            <span>Verify Token</span>
+          </button>
+          <button type="button" class="btn btn-text" id="back-btn">
+            ← Try different email
+          </button>
+        </div>
+        
+        <p id="login-message" class="message hidden"></p>
+      </div>
+    </section>
+
+    <!-- Main Section (shown when logged in) -->
+    <section id="main-section" class="section hidden">
+      <!-- User Info -->
+      <div class="user-bar">
+        <span id="user-email" class="user-email"></span>
+        <button id="logout-btn" class="btn btn-text">Sign out</button>
+      </div>
+
+      <div id="plan-card" class="card plan-card">
+        <div class="plan-header-row">
+          <div>
+            <p class="plan-eyebrow">Extension Access</p>
+            <h3 id="plan-name">Free</h3>
+          </div>
+          <span id="plan-pill" class="plan-pill plan-free">Free</span>
+        </div>
+        <p id="plan-description" class="plan-description">
+          Sign in with Sally Premium or Pro to unlock autonomous shopping in the extension.
+        </p>
+        <button id="upgrade-btn" class="btn btn-secondary hidden">
+          <span>Upgrade in Sally</span>
+        </button>
+      </div>
+
+      <!-- Stats Card -->
+      <div id="stats-card" class="card stats-card">
+        <div class="stats-grid">
+          <div class="stat">
+            <span class="stat-value" id="stat-items">0</span>
+            <span class="stat-label">Items Added</span>
+          </div>
+          <div class="stat">
+            <span class="stat-value" id="stat-time">0 min</span>
+            <span class="stat-label">Time Saved</span>
+          </div>
+          <div class="stat">
+            <span class="stat-value" id="stat-sessions">0</span>
+            <span class="stat-label">Shop Trips</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Shopping Task Form -->
+      <div id="task-form" class="card">
+        <h3>What shall I get you?</h3>
+        
+        <div class="mobile-link-banner">
+          <span>📱 Have Sally Mobile?</span>
+          <button id="show-qr-code-btn" class="btn btn-primary">
+            <span>📱 Show QR Code</span>
+          </button>
+        </div>
+        
+        <div class="divider-text">
+          <span>or enter manually</span>
+        </div>
+        
+        <div class="input-group">
+          <label for="store-select">Store (auto-detected from current tab)</label>
+          <select id="store-select">
+            <option value="">Auto-detect from tab...</option>
+            <option value="tesco">Tesco</option>
+            <option value="sainsburys">Sainsbury's</option>
+            <option value="asda">ASDA</option>
+            <option value="ocado">Ocado</option>
+            <option value="waitrose">Waitrose</option>
+          </select>
+          <p class="hint">💡 Navigate to a supermarket site first, then click "Let Sally Shop!"</p>
+        </div>
+        
+        <div class="input-group">
+          <label for="items-input">Shopping List</label>
+          <textarea id="items-input" placeholder="Enter items, one per line:&#10;2x Milk&#10;1x Bread&#10;6x Eggs" rows="6" required></textarea>
+        </div>
+        
+        <div class="input-group">
+          <label for="postcode-input">Delivery Postcode (optional)</label>
+          <input type="text" id="postcode-input" placeholder="SW1A 1AA">
+        </div>
+        
+        <div class="button-group">
+          <button id="start-btn" class="btn btn-primary">
+            <span>🛒 Let Sally Shop!</span>
+          </button>
+          <button id="generate-qr-btn" class="btn btn-secondary">
+            <span>📱 Generate QR Code</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Active Task Status -->
+      <div id="task-status" class="card hidden">
+        <div class="task-header">
+          <h3>Sally is shopping...</h3>
+          <span id="task-store" class="badge"></span>
+        </div>
+        
+        <div class="timer-row">
+          <span class="timer-icon">⏱</span>
+          <span id="shopping-timer" class="shopping-timer">0:00</span>
+        </div>
+        
+        <div class="progress-bar">
+          <div id="progress-fill" class="progress-fill"></div>
+        </div>
+        <p id="progress-text" class="progress-text">0 of 0 items</p>
+        
+        <div id="items-list" class="items-list"></div>
+        
+        <button id="stop-btn" class="btn btn-danger">
+          <span>⏹ Stop Shopping</span>
+        </button>
+      </div>
+
+      <!-- Task Complete -->
+      <div id="task-complete" class="card hidden">
+        <div class="complete-icon">✅</div>
+        <h3>Shopping Complete!</h3>
+        <p id="complete-summary"></p>
+        <p id="complete-time" class="complete-time"></p>
+        <button id="view-cart-btn" class="btn btn-primary">
+          <span>View Cart</span>
+        </button>
+        <button id="new-task-btn" class="btn btn-secondary">
+          <span>New Shopping List</span>
+        </button>
+      </div>
+
+      <!-- Saved Lists -->
+      <div id="saved-lists" class="card">
+        <div class="saved-lists-header">
+          <h3>Recent Shopping Lists</h3>
+          <button id="clear-history-btn" class="btn btn-text">Clear</button>
+        </div>
+        <div id="saved-lists-container" class="saved-lists-container">
+          <p class="empty-state">No saved lists yet</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- QR Generator Section -->
+    <section id="qr-generator-section" class="section hidden">
+      <div class="qr-container">
+        <h2>Scan with Sally Mobile</h2>
+        <p class="subtitle" id="qr-instructions">Open Sally app on your phone and scan this QR code</p>
+        
+        <div id="qr-code-display" class="qr-display"></div>
+        
+        <div class="qr-info">
+          <p>📱 Works without signing in!</p>
+          <p>🔒 Sign in on your phone when scanning</p>
+        </div>
+        
+        <button class="btn btn-secondary" id="qr-close-btn">
+          Close
+        </button>
+      </div>
+    </section>
+
+    <!-- Footer -->
+    <!-- Extension QR Code Section (for mobile to scan) -->
+    <section id="extension-qr-section" class="section hidden">
+      <div class="qr-card">
+        <h3>📱 Scan with Sally Mobile</h3>
+        <p class="hint">Open Sally Mobile → Tap "Shop with Sally" → Scan this QR code</p>
+        
+        <div id="extension-qr-display" class="qr-display"></div>
+        
+        <div class="qr-status-container">
+          <p id="extension-qr-status" class="qr-status">⏳ Waiting for mobile app to send shopping list...</p>
+          <div id="extension-qr-timer" class="qr-timer">Expires in 15:00</div>
+        </div>
+        
+        <div class="qr-info">
+          <p>💡 Your shopping list will appear here automatically</p>
+          <p>🔒 Session expires in 15 minutes</p>
+        </div>
+        
+        <div class="qr-actions">
+          <button type="button" class="btn btn-secondary" id="extension-qr-cancel-btn">
+            <span>Cancel</span>
+          </button>
+          <button type="button" class="btn btn-text" id="extension-qr-refresh-btn">
+            <span>🔄 Generate New QR</span>
+          </button>
+        </div>
+        
+        <p id="extension-qr-message" class="message hidden"></p>
+      </div>
+    </section>
+
+    <!-- Sync Section -->
+    <section id="sync-section" class="section hidden">
+      <div class="sync-card">
+        <h3>🔗 Sync with HeySalad Chat</h3>
+        <p class="hint">Enter the code from chat.heysalad.app to sync your shopping lists</p>
+        
+        <div class="input-group">
+          <label for="sync-code">Sync Code</label>
+          <input type="text" id="sync-code" placeholder="ABC123" maxlength="6" style="text-transform: uppercase; letter-spacing: 2px; font-size: 18px; text-align: center;">
+        </div>
+        
+        <button type="button" class="btn btn-primary" id="sync-btn">
+          <span>Link Extension</span>
+        </button>
+        
+        <p id="sync-message" class="message hidden"></p>
+        
+        <div id="sync-status" class="sync-status hidden">
+          <span class="sync-icon">✓</span>
+          <span>Synced with chat.heysalad.app</span>
+        </div>
+      </div>
+    </section>
+
+    <footer class="footer">
+      <p>Sally by HeySalad® v1.0</p>
+      <div class="footer-links">
+        <a href="https://chat.heysalad.app" target="_blank">Chat</a>
+        <a href="https://heysalad.app/help" target="_blank">Help</a>
+      </div>
+    </footer>
+  </div>
+
+  <script src="jsqr.min.js"></script>
+  <script src="qrcode.min.js"></script>
+  <script src="qr-scanner.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>

@@ -1,0 +1,87 @@
+{
+  "manifest_version": 3,
+  "name": "Sally by HeySalad®",
+  "short_name": "Sally",
+  "version": "1.0.7",
+  "description": "Meet Sally, your AI shopping assistant. She adds groceries to your cart automatically at UK supermarkets.",
+  "author": "HeySalad Payments Ltd",
+  "homepage_url": "https://heysalad.app",
+  
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  
+  "action": {
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    },
+    "default_title": "Sally - AI Shopping Assistant"
+  },
+  
+  "background": {
+    "service_worker": "background/service-worker.js"
+  },
+
+  "side_panel": {
+    "default_path": "sidepanel/sidepanel.html"
+  },
+
+  "permissions": [
+    "storage",
+    "activeTab",
+    "scripting",
+    "tabs",
+    "tabGroups",
+    "notifications",
+    "identity",
+    "sidePanel"
+  ],
+  
+  "host_permissions": [
+    "https://www.tesco.com/*",
+    "https://secure.tesco.com/*",
+    "https://www.sainsburys.co.uk/*",
+    "https://groceries.asda.com/*",
+    "https://www.ocado.com/*",
+    "https://www.waitrose.com/*",
+    "https://groceries.morrisons.com/*",
+    "https://www.morrisons.com/*",
+    "https://www.aldi.co.uk/*",
+    "https://oauth.heysalad.app/*",
+    "https://shopping-agent.heysalad-o.workers.dev/*",
+    "https://sally-api.heysalad.app/*",
+    "https://sally-api.heysalad-o.workers.dev/*"
+  ],
+  
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www.tesco.com/*",
+        "https://secure.tesco.com/*",
+        "https://www.sainsburys.co.uk/*",
+        "https://groceries.asda.com/*",
+        "https://www.ocado.com/*",
+        "https://www.waitrose.com/*",
+        "https://groceries.morrisons.com/*",
+        "https://www.morrisons.com/*",
+        "https://www.aldi.co.uk/*"
+      ],
+      "js": ["content-scripts/base.js"],
+      "css": ["content-scripts/overlay.css"],
+      "run_at": "document_end"
+    }
+  ],
+  
+  "web_accessible_resources": [
+    {
+      "resources": ["icons/*", "popup/qrcode.min.js"],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}

@@ -1,0 +1,37 @@
+name: Manifest Permissions Guard
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "manifest.json"
+
+jobs:
+  permissions-diff:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Compare manifest permissions
+        run: |
+          set -euo pipefail
+          BASE_REF="origin/${{ github.base_ref }}"
+          git fetch origin "${{ github.base_ref }}"
+
+          base_perms="$(git show "$BASE_REF:manifest.json" | jq -c '{permissions: (.permissions // []), host_permissions: (.host_permissions // [])}')"
+          head_perms="$(jq -c '{permissions: (.permissions // []), host_permissions: (.host_permissions // [])}' manifest.json)"
+
+          if [ "$base_perms" != "$head_perms" ]; then
+            echo "Manifest permissions changed."
+            echo "Base: $base_perms"
+            echo "Head: $head_perms"
+            echo "Add explicit PR rationale for permission changes."
+            exit 1
+          fi
+
+          echo "No permission changes detected."

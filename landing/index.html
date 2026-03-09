@@ -1,0 +1,606 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sally by HeySalad® - AI Shopping Assistant</title>
+  <meta name="description" content="Meet Sally, your AI shopping assistant. She adds groceries to your cart automatically at UK supermarkets.">
+  
+  <!-- Open Graph -->
+  <meta property="og:title" content="Sally - AI that does your grocery shopping">
+  <meta property="og:description" content="Type your list. Click shop. Watch Sally add items to your cart automatically.">
+  <meta property="og:image" content="https://sally.heysalad.app/og-image.png">
+  <meta property="og:url" content="https://sally.heysalad.app">
+  <meta property="og:type" content="website">
+  
+  <!-- Twitter -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Sally - AI Shopping Assistant">
+  <meta name="twitter:description" content="Your weekly shop. Done in 2 minutes.">
+  
+  <!-- Favicon -->
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 128 128'><circle cx='64' cy='64' r='64' fill='%23E01D1D'/><text x='64' y='92' font-family='Arial Black' font-size='80' font-weight='900' fill='white' text-anchor='middle'>S</text></svg>">
+  
+  <!-- Inter Font -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    :root {
+      --cherry: #E01D1D;
+      --cherry-light: #FF4444;
+      --cherry-dark: #B01515;
+      --cherry-bg: #FFF5F5;
+      --text: #1a1a1a;
+      --text-muted: #666666;
+    }
+    
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: white;
+      color: var(--text);
+      line-height: 1.6;
+      overflow-x: hidden;
+    }
+    
+    /* Hero Section */
+    .hero {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 40px 20px;
+      text-align: center;
+      position: relative;
+    }
+    
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--cherry-bg);
+      border: 1px solid rgba(224, 29, 29, 0.2);
+      padding: 8px 16px;
+      border-radius: 100px;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--cherry);
+      margin-bottom: 32px;
+    }
+    
+    .badge-dot {
+      width: 8px;
+      height: 8px;
+      background: var(--cherry);
+      border-radius: 50%;
+      animation: pulse 2s infinite;
+    }
+    
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+    
+    .logo {
+      width: 100px;
+      height: 100px;
+      background: var(--cherry);
+      border-radius: 28px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 32px;
+      box-shadow: 0 20px 60px rgba(224, 29, 29, 0.3);
+    }
+    
+    .logo-text {
+      font-size: 60px;
+      font-weight: 900;
+      color: white;
+    }
+    
+    h1 {
+      font-size: clamp(3rem, 10vw, 5rem);
+      font-weight: 900;
+      margin-bottom: 16px;
+      letter-spacing: -0.03em;
+      line-height: 1.1;
+      color: var(--cherry);
+    }
+    
+    .tagline {
+      font-size: clamp(1.25rem, 3vw, 1.5rem);
+      color: var(--text-muted);
+      max-width: 500px;
+      margin-bottom: 48px;
+      font-weight: 500;
+    }
+    
+    .cta-group {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+    }
+    
+    .cta-button {
+      display: inline-flex;
+      align-items: center;
+      gap: 12px;
+      background: var(--cherry);
+      color: white;
+      padding: 18px 40px;
+      border-radius: 100px;
+      font-size: 17px;
+      font-weight: 700;
+      text-decoration: none;
+      transition: all 0.2s;
+      box-shadow: 0 10px 40px rgba(224, 29, 29, 0.3);
+    }
+    
+    .cta-button:hover {
+      transform: translateY(-3px) scale(1.02);
+      box-shadow: 0 20px 60px rgba(224, 29, 29, 0.4);
+      background: var(--cherry-dark);
+    }
+    
+    .cta-button svg {
+      width: 20px;
+      height: 20px;
+    }
+    
+    .cta-secondary {
+      font-size: 14px;
+      color: var(--text-muted);
+      font-weight: 500;
+    }
+    
+    /* Scroll indicator */
+    .scroll-indicator {
+      position: absolute;
+      bottom: 40px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: var(--cherry);
+      opacity: 0.6;
+      animation: bounce 2s infinite;
+    }
+    
+    @keyframes bounce {
+      0%, 100% { transform: translateX(-50%) translateY(0); }
+      50% { transform: translateX(-50%) translateY(10px); }
+    }
+    
+    /* Demo Section */
+    .demo {
+      padding: 100px 20px;
+      background: var(--cherry-bg);
+    }
+    
+    .container {
+      max-width: 1000px;
+      margin: 0 auto;
+    }
+    
+    .section-label {
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--cherry);
+      margin-bottom: 16px;
+    }
+    
+    .demo h2 {
+      font-size: clamp(2rem, 5vw, 2.5rem);
+      font-weight: 800;
+      margin-bottom: 48px;
+      letter-spacing: -0.02em;
+      color: var(--text);
+    }
+    
+    .demo-video {
+      width: 100%;
+      border-radius: 20px;
+      box-shadow: 0 40px 100px rgba(224, 29, 29, 0.15);
+      aspect-ratio: 16/9;
+      border: 1px solid rgba(224, 29, 29, 0.1);
+    }
+    
+    /* Features */
+    .features {
+      padding: 100px 20px;
+      background: white;
+    }
+    
+    .features h2 {
+      font-size: clamp(2rem, 5vw, 2.5rem);
+      font-weight: 800;
+      margin-bottom: 64px;
+      text-align: center;
+      letter-spacing: -0.02em;
+      color: var(--text);
+    }
+    
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 24px;
+    }
+    
+    .feature-card {
+      background: var(--cherry-bg);
+      border: 1px solid rgba(224, 29, 29, 0.1);
+      padding: 32px;
+      border-radius: 20px;
+      transition: all 0.3s;
+    }
+    
+    .feature-card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 20px 40px rgba(224, 29, 29, 0.1);
+    }
+    
+    .feature-icon {
+      width: 48px;
+      height: 48px;
+      margin-bottom: 20px;
+      color: var(--cherry);
+    }
+    
+    .feature-icon svg {
+      width: 48px;
+      height: 48px;
+      stroke-width: 1.5;
+    }
+    
+    .feature-card h3 {
+      font-size: 1.25rem;
+      font-weight: 700;
+      margin-bottom: 8px;
+      color: var(--text);
+    }
+    
+    .feature-card p {
+      color: var(--text-muted);
+      font-size: 15px;
+      line-height: 1.6;
+    }
+    
+    /* Stores */
+    .stores {
+      padding: 80px 20px;
+      background: var(--cherry-bg);
+      text-align: center;
+    }
+    
+    .stores h2 {
+      font-size: 1.25rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      margin-bottom: 32px;
+    }
+    
+    .store-logos {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 32px 48px;
+    }
+    
+    .store-logo {
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: var(--cherry);
+      opacity: 0.5;
+      transition: opacity 0.2s;
+    }
+    
+    .store-logo:hover {
+      opacity: 1;
+    }
+    
+    /* How it works */
+    .how-it-works {
+      padding: 100px 20px;
+      background: white;
+    }
+    
+    .how-it-works h2 {
+      font-size: clamp(2rem, 5vw, 2.5rem);
+      font-weight: 800;
+      margin-bottom: 64px;
+      text-align: center;
+      letter-spacing: -0.02em;
+      color: var(--text);
+    }
+    
+    .steps {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 32px;
+      max-width: 900px;
+      margin: 0 auto;
+    }
+    
+    .step {
+      text-align: center;
+    }
+    
+    .step-number {
+      width: 56px;
+      height: 56px;
+      background: var(--cherry);
+      color: white;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      font-size: 1.25rem;
+      margin: 0 auto 20px;
+      box-shadow: 0 10px 30px rgba(224, 29, 29, 0.3);
+    }
+    
+    .step h3 {
+      font-size: 1.1rem;
+      font-weight: 700;
+      margin-bottom: 8px;
+      color: var(--text);
+    }
+    
+    .step p {
+      color: var(--text-muted);
+      font-size: 14px;
+      line-height: 1.5;
+    }
+    
+    /* Final CTA */
+    .cta-section {
+      padding: 120px 20px;
+      text-align: center;
+      background: var(--cherry-bg);
+    }
+    
+    .cta-section h2 {
+      font-size: clamp(2.5rem, 7vw, 4rem);
+      font-weight: 900;
+      margin-bottom: 16px;
+      letter-spacing: -0.03em;
+      color: var(--cherry);
+    }
+    
+    .cta-section p {
+      color: var(--text-muted);
+      font-size: 1.25rem;
+      margin-bottom: 40px;
+      font-weight: 500;
+    }
+    
+    /* Footer */
+    footer {
+      padding: 40px 20px;
+      text-align: center;
+      border-top: 1px solid rgba(224, 29, 29, 0.1);
+      background: white;
+    }
+    
+    footer p {
+      color: var(--text-muted);
+      font-size: 14px;
+    }
+    
+    footer a {
+      color: var(--cherry);
+      text-decoration: none;
+    }
+    
+    footer a:hover {
+      text-decoration: underline;
+    }
+    
+    .footer-links {
+      margin-top: 16px;
+      display: flex;
+      justify-content: center;
+      gap: 32px;
+    }
+    
+    .footer-links a {
+      color: var(--text-muted);
+    }
+    
+    .footer-links a:hover {
+      color: var(--cherry);
+    }
+    
+    .disclaimer {
+      margin-top: 24px;
+      font-size: 11px;
+      color: #999;
+      max-width: 600px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+    
+    /* Responsive */
+    @media (max-width: 640px) {
+      .steps {
+        grid-template-columns: 1fr;
+      }
+      
+      .store-logos {
+        gap: 24px 32px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <!-- Hero -->
+  <section class="hero">
+    <div class="badge">
+      <span class="badge-dot"></span>
+      Now available on Chrome Web Store
+    </div>
+    
+    <div class="logo">
+      <span class="logo-text">S</span>
+    </div>
+    
+    <h1>Sally</h1>
+    <p class="tagline">AI that does your grocery shopping while you do literally anything else</p>
+    
+    <div class="cta-group">
+      <a href="https://chromewebstore.google.com/detail/sally-by-heysalad%C2%AE/bocfhkkokpfjcgchdkenflanjbkmdika" class="cta-button" target="_blank">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/><line x1="21.17" y1="8" x2="12" y2="8"/><line x1="3.95" y1="6.06" x2="8.54" y2="14"/><line x1="10.88" y1="21.94" x2="15.46" y2="14"/></svg>
+        Add to Chrome — It's Free
+      </a>
+      <span class="cta-secondary">Works with Tesco, Sainsbury's, ASDA & more</span>
+    </div>
+    
+    <div class="scroll-indicator">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M19 12l-7 7-7-7"/></svg>
+    </div>
+  </section>
+
+  <!-- Demo Video -->
+  <section class="demo">
+    <div class="container">
+      <p class="section-label">See it in action</p>
+      <h2>Your 20-item shop.<br>Done in 2 minutes.</h2>
+      <iframe 
+        class="demo-video" 
+        src="https://www.youtube.com/embed/o1rGHLl6QN0" 
+        title="Sally by HeySalad - AI Shopping Assistant Demo"
+        frameborder="0" 
+        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" 
+        allowfullscreen>
+      </iframe>
+    </div>
+  </section>
+
+  <!-- Features -->
+  <section class="features">
+    <div class="container">
+      <h2>Why Sally?</h2>
+      <div class="features-grid">
+        <div class="feature-card">
+          <div class="feature-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/></svg>
+          </div>
+          <h3>AI-Powered Matching</h3>
+          <p>GPT-4 picks the right products. "Apples" means fruit, not apple juice.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+          </div>
+          <h3>No Passwords Shared</h3>
+          <p>Uses your existing logged-in session. Credentials never leave your browser.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+          </div>
+          <h3>5x Faster Shopping</h3>
+          <p>A 20-item shop that takes 10+ minutes? Sally does it in under 2.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
+          </div>
+          <h3>Track Your Savings</h3>
+          <p>See how many items Sally has added and how much time you've saved.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>
+          </div>
+          <h3>Reuse Lists</h3>
+          <p>Previous shopping lists are saved. One click to shop the same items again.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/></svg>
+          </div>
+          <h3>Quantity Support</h3>
+          <p>Need 2 milks? Type "2x Milk" or "Milk (2)" and Sally handles it.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Supported Stores -->
+  <section class="stores">
+    <h2>Works with your favourite UK supermarkets</h2>
+    <div class="store-logos">
+      <span class="store-logo">Tesco</span>
+      <span class="store-logo">Sainsbury's</span>
+      <span class="store-logo">ASDA</span>
+      <span class="store-logo">Ocado</span>
+      <span class="store-logo">Waitrose</span>
+      <span class="store-logo">Morrisons</span>
+      <span class="store-logo">Aldi</span>
+    </div>
+  </section>
+
+  <!-- How it works -->
+  <section class="how-it-works">
+    <div class="container">
+      <h2>How it works</h2>
+      <div class="steps">
+        <div class="step">
+          <div class="step-number">1</div>
+          <h3>Go to your store</h3>
+          <p>Navigate to any supported supermarket and log in as usual</p>
+        </div>
+        <div class="step">
+          <div class="step-number">2</div>
+          <h3>Enter your list</h3>
+          <p>Click Sally and type your items, one per line</p>
+        </div>
+        <div class="step">
+          <div class="step-number">3</div>
+          <h3>Let Sally shop</h3>
+          <p>Watch her search, pick, and add items to your cart</p>
+        </div>
+        <div class="step">
+          <div class="step-number">4</div>
+          <h3>Checkout</h3>
+          <p>Review your cart and complete your order</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Final CTA -->
+  <section class="cta-section">
+    <h2>Reclaim your time</h2>
+    <p>Let Sally do the boring stuff.</p>
+    <a href="https://chromewebstore.google.com/detail/sally-by-heysalad%C2%AE/bocfhkkokpfjcgchdkenflanjbkmdika" class="cta-button" target="_blank">
+      Add to Chrome — It's Free
+    </a>
+  </section>
+
+  <!-- Footer -->
+  <footer>
+    <p>Sally by <a href="https://heysalad.app">HeySalad®</a></p>
+    <div class="footer-links">
+      <a href="https://heysalad.app/privacy">Privacy</a>
+      <a href="https://heysalad.app/terms">Terms</a>
+      <a href="mailto:hey@heysalad.io">Contact</a>
+    </div>
+    <p class="disclaimer">
+      Sally is not affiliated with, endorsed by, or sponsored by any of the supermarkets mentioned. All trademarks belong to their respective owners.
+    </p>
+  </footer>
+</body>
+</html>

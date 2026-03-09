@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sally - Signing In...</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: 'Figtree', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      background: #f9fafb;
+      color: #000;
+    }
+    
+    .container {
+      text-align: center;
+      padding: 40px;
+      background: #fff;
+      border-radius: 16px;
+      box-shadow: 0 4px 24px rgba(0, 0, 0, 0.08);
+      max-width: 400px;
+    }
+    
+    .logo {
+      width: 64px;
+      height: 64px;
+      margin-bottom: 20px;
+    }
+    
+    h1 {
+      font-size: 24px;
+      font-weight: 700;
+      margin-bottom: 12px;
+    }
+    
+    p {
+      color: rgba(0, 0, 0, 0.53);
+      margin-bottom: 20px;
+    }
+    
+    .spinner {
+      width: 32px;
+      height: 32px;
+      border: 3px solid #e5e7eb;
+      border-top-color: #E01D1D;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin: 0 auto 20px;
+    }
+    
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    
+    .success {
+      color: #22c55e;
+    }
+    
+    .error {
+      color: #ef4444;
+    }
+    
+    .hidden {
+      display: none;
+    }
+    
+    .debug {
+      font-size: 10px;
+      color: #999;
+      margin-top: 20px;
+      word-break: break-all;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <img src="../icons/icon128.png" alt="Sally" class="logo">
+    
+    <div id="loading">
+      <div class="spinner"></div>
+      <h1>Sally is signing you in...</h1>
+      <p>Please wait while we verify your account.</p>
+    </div>
+    
+    <div id="success" class="hidden">
+      <h1 class="success">✓ Welcome!</h1>
+      <p>You can now close this tab and use Sally to do your shopping.</p>
+    </div>
+    
+    <div id="error" class="hidden">
+      <h1 class="error">Sign In Failed</h1>
+      <p id="error-message">Something went wrong. Please try again.</p>
+    </div>
+    
+    <p id="debug" class="debug hidden"></p>
+  </div>
+
+  <script>
+    // Extract token from URL - check both query params and hash fragment
+    const urlParams = new URLSearchParams(window.location.search);
+    let token = urlParams.get('token');
+    
+    // Also check hash fragment (some OAuth flows use this)
+    if (!token && window.location.hash) {
+      const hashParams = new URLSearchParams(window.location.hash.substring(1));
+      token = hashParams.get('token') || hashParams.get('access_token');
+    }
+    
+    const loadingEl = document.getElementById('loading');
+    const successEl = document.getElementById('success');
+    const errorEl = document.getElementById('error');
+    const errorMessage = document.getElementById('error-message');
+    const debugEl = document.getElementById('debug');
+    
+    function log(msg) {
+      console.log('[Sally Auth]', msg);
+      // Show debug info in dev
+      debugEl.textContent = msg;
+      debugEl.classList.remove('hidden');
+    }
+    
+    async function handleCallback() {
+      log('Starting auth callback...');
+      log('URL: ' + window.location.href);
+      log('Token found: ' + (token ? 'yes (' + token.substring(0, 20) + '...)' : 'no'));
+      
+      if (!token) {
+        showError('No authentication token found in URL.');
+        return;
+      }
+      
+      try {
+        log('Sending token to background script...');
+        
+        // Check if chrome.runtime is available
+        if (typeof chrome === 'undefined' || !chrome.runtime) {
+          showError('Extension context not available. Please reload the extension.');
+          return;
+        }
+        
+        // Send token to background script for validation
+        chrome.runtime.sendMessage({
+          type: 'AUTH_CALLBACK',
+          data: { token }
+        }, (response) => {
+          log('Response received: ' + JSON.stringify(response));
+          
+          // Check for chrome.runtime.lastError
+          if (chrome.runtime.lastError) {
+            console.error('Chrome runtime error:', chrome.runtime.lastError);
+            showError('Extension error: ' + chrome.runtime.lastError.message);
+            return;
+          }
+          
+          if (response && response.success) {
+            showSuccess();
+            // Close tab after 2 seconds
+            setTimeout(() => {
+              window.close();
+            }, 2000);
+          } else {
+            showError(response?.error || 'Authentication failed. Please try again.');
+          }
+        });
+      } catch (error) {
+        console.error('Auth callback error:', error);
+        showError('Failed to communicate with extension: ' + error.message);
+      }
+    }
+    
+    function showSuccess() {
+      loadingEl.classList.add('hidden');
+      successEl.classList.remove('hidden');
+      debugEl.classList.add('hidden');
+    }
+    
+    function showError(message) {
+      loadingEl.classList.add('hidden');
+      errorEl.classList.remove('hidden');
+      errorMessage.textContent = message;
+    }
+    
+    // Run callback handler when DOM is ready
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', handleCallback);
+    } else {
+      handleCallback();
+    }
+  </script>
+</body>
+</html>
