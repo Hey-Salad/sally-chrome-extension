@@ -188,7 +188,7 @@ function getStoreConfig(store) {
     },
     ocado: {
       searchUrl: 'https://www.ocado.com/search?q=',
-      checkoutUrl: 'https://www.ocado.com/webshop/getBasket.do'
+      checkoutUrl: 'https://www.ocado.com/basket'
     },
     waitrose: {
       searchUrl: 'https://www.waitrose.com/ecom/shop/search?searchTerm=',

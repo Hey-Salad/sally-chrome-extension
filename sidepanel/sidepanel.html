@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Sally - Side Panel</title>
+  <title>Sally by HeySalad®</title>
   <link rel="stylesheet" href="sidepanel.css">
 </head>
 <body class="sidepanel-shell">
@@ -22,8 +22,8 @@
 
     <section id="auth-section" class="section hidden">
       <div class="auth-card">
-        <h2>Hey, I'm Sally! 👋</h2>
-        <p class="subtitle">Sign in to let me do your grocery shopping</p>
+        <h2>Sign in to start shopping</h2>
+        <p class="subtitle">Connect your HeySalad account to chat, build lists, and run supermarket shopping from this panel.</p>
 
         <div id="email-step">
           <form id="login-form">
@@ -66,22 +66,52 @@
       </div>
     </section>
 
-    <section id="main-section" class="section hidden">
+    <section id="main-section" class="section chat-first hidden">
       <div class="user-bar">
-        <span id="user-email" class="user-email"></span>
-        <button id="logout-btn" class="btn btn-text">Sign out</button>
+        <div class="user-identity">
+          <span id="user-avatar" class="user-avatar" aria-hidden="true"></span>
+          <span id="user-email" class="user-email"></span>
+        </div>
+        <div class="user-actions">
+          <span id="user-plan-badge" class="user-plan-badge plan-free">Free</span>
+          <button id="logout-btn" class="btn btn-text logout-btn" type="button" aria-label="Sign out" title="Sign out">Sign out</button>
+        </div>
       </div>
 
-      <div class="card activity-card">
-        <div class="activity-header">
+      <div class="card activity-card chat-card" aria-live="polite">
+        <div class="activity-header chat-header">
           <div>
-            <p class="activity-eyebrow">Sally Live</p>
-            <h3>Activity Feed</h3>
+            <p class="activity-eyebrow">Sally Threads</p>
+            <h3>What can we get done?</h3>
           </div>
           <button id="clear-activity-btn" class="btn btn-text">Clear</button>
         </div>
         <div id="activity-feed" class="activity-feed">
-          <p class="activity-empty">Sally will narrate shopping, QR handoff, and account events here.</p>
+          <p class="activity-empty">Message Sally or paste groceries. Shopping runs as a tool when you choose to start it.</p>
+        </div>
+        <form id="chat-form" class="chat-form">
+          <button id="chat-plus-btn" class="chat-plus-btn" type="button" aria-label="Show quick actions">
+            <span aria-hidden="true">+</span>
+          </button>
+          <textarea
+            id="chat-input"
+            rows="3"
+            placeholder="Message Sally or paste a list..."
+            aria-label="Message Sally"
+          ></textarea>
+          <button id="chat-voice-btn" class="chat-voice-btn" type="button" aria-label="Start voice">
+            <span aria-hidden="true"></span>
+          </button>
+          <button id="chat-send-btn" class="chat-send-btn" type="submit" aria-label="Send message">
+            <span>Send</span>
+          </button>
+        </form>
+        <div class="chat-suggestions hidden" aria-label="Quick actions">
+          <button type="button" class="chat-suggestion" data-chat-action="attach-mobile">Attach mobile app</button>
+          <button type="button" class="chat-suggestion mobile-attach-option hidden" data-chat-action="attach-mobile-ios">iOS</button>
+          <button type="button" class="chat-suggestion mobile-attach-option hidden" data-chat-action="attach-mobile-android">Android soon</button>
+          <button type="button" class="chat-suggestion" data-chat-prompt="2x milk&#10;bread&#10;eggs">Sample list</button>
+          <button type="button" class="chat-suggestion" data-chat-prompt="new list">New list</button>
         </div>
       </div>
 
@@ -308,7 +338,7 @@
     </section>
 
     <footer class="footer">
-      <p>Sally by HeySalad® v1.0</p>
+      <p>Sally by HeySalad® v1.0.28</p>
       <div class="footer-links">
         <a href="https://chat.heysalad.app" target="_blank">Chat</a>
         <a href="https://heysalad.app/help" target="_blank">Help</a>
@@ -319,6 +349,8 @@
   <script src="../popup/jsqr.min.js"></script>
   <script src="../popup/qrcode.min.js"></script>
   <script src="../popup/qr-scanner.js"></script>
+  <script src="../shared/task-metrics.js"></script>
+  <script src="../shared/item-parser.js"></script>
   <script src="sidepanel.js"></script>
   <script src="../popup/popup.js"></script>
 </body>

@@ -3,33 +3,39 @@
 ## Basic Info
 
 **Name**: Sally by HeySalad®
-**Version**: 1.0.1
+**Version**: 1.0.28
 **Category**: Shopping
 **Language**: English (UK)
 
 ## Short Description (132 characters max)
 
 ```
-Meet Sally, your AI shopping assistant. She adds groceries to your cart automatically at UK supermarkets.
+Save time on repeat shopping. Chat with Sally to plan lists, build carts, and run shopping tasks.
 ```
 
 ## Detailed Description
 
 ```
-Sally is your personal AI shopping assistant that automates grocery shopping at UK supermarkets.
+Sally by HeySalad® helps you save time on repeat shopping.
+
+Chat with Sally to plan groceries, turn recipes into lists, build reusable carts, and run shopping tasks from your browser. Sally is built for everyday shoppers, busy households, creators, assistants, and businesses with repeat buying workflows.
 
 🛒 HOW IT WORKS
-1. Navigate to Tesco, Sainsbury's, ASDA, Ocado, or Waitrose
-2. Enter your shopping list in Sally
-3. Click "Let Sally Shop!" and watch her add items to your cart
+1. Open Sally from Chrome
+2. Chat, paste a list, or ask Sally to plan a shop
+3. Review the list Sally creates
+4. Choose when to run shopping as a task
+5. Watch Sally search, match products, and add items to your cart
 
 ✨ KEY FEATURES
-• AI-powered product matching - Sally intelligently picks the right products
-• Works with your logged-in session - no password sharing required
-• Real-time progress overlay - see exactly what Sally is doing
-• Stats tracking - track items added, time saved, and shopping trips
-• Quantity support - "2x Milk", "Bread x3", "Eggs (6)"
-• Saved lists - reuse your previous shopping lists with one click
+• Save time on repeat shopping tasks
+• Chat-first planning for groceries, recipes, and shopping lists
+• Build carts from lists, recipes, routines, or repeat workflows
+• AI-powered product matching for supermarket search results
+• Works with your logged-in supermarket session, no password sharing required
+• Live progress with items added, issues, cost, and total so far
+• Quantity support, for example "2x milk", "bread x3", "eggs (6)"
+• Useful for households, creators, assistants, offices, and repeat business shopping
 
 🏪 SUPPORTED STORES
 • Tesco
@@ -37,22 +43,26 @@ Sally is your personal AI shopping assistant that automates grocery shopping at 
 • ASDA
 • Ocado
 • Waitrose
+• Morrisons
+• Aldi
 
 ⏱️ SAVE TIME
-Sally estimates saving ~30 seconds per item. A typical 20-item shop that would take 10+ minutes of searching and clicking is done in under 2 minutes.
+Sally handles repetitive searching, matching, and adding so you can focus on deciding what you need. For repeat shops, recipes, and common supply runs, Sally turns the browser work into a guided shopping task.
 
 🔒 PRIVACY & SECURITY
-Sally works entirely in your browser using your existing supermarket sessions:
+Sally works in your browser using your existing supermarket sessions:
 • No passwords stored or transmitted
-• No personal data sent to servers
-• Only product names sent for AI matching
-• Secure OAuth authentication
+• Secure HeySalad account sign-in
+• Billing and usage limits are checked by HeySalad so paid access is controlled
+• Shopping requests may send grocery item names, store choice, account identity, and shopping progress to HeySalad services so Sally can plan, run, and measure shopping
+• You stay in control and review your supermarket cart before checkout
 
-📊 TRACK YOUR SAVINGS
+📊 TRACK YOUR SHOPPING TASKS
 Sally keeps track of:
 • Total items added to carts
-• Estimated time saved
+• Shopping progress and total cost so far
 • Number of shopping trips completed
+• Repeat shopping workflows over time
 
 Built by HeySalad® - Making grocery shopping effortless.
 ```
@@ -101,7 +111,7 @@ https://heysalad.app/help
 ### Large Promo Tile (920x680) - Optional
 - Same branding
 - Show supported store logos
-- "Shop 5x faster" messaging
+- "Guided grocery shopping" messaging
 
 ### Marquee (1400x560) - Optional
 - Full branding with screenshots
@@ -111,11 +121,13 @@ https://heysalad.app/help
 
 | Permission | Why We Need It |
 |------------|----------------|
-| `storage` | To save your shopping preferences, track your stats (items added, time saved), and remember your recent shopping lists for quick reuse. |
+| `storage` | To save your Sally session, shopping preferences, shopping task state, and local progress. |
 | `activeTab` | To detect which supermarket website you're on and inject Sally's shopping automation script into the current tab. |
 | `scripting` | To run Sally's shopping script that searches for products, matches them using AI, and clicks "Add to cart" buttons. |
 | `tabs` | To navigate between search results pages and the shopping cart as Sally adds items. |
 | `notifications` | To alert you when Sally has finished shopping so you can review your cart. |
+| `identity` | To support secure HeySalad sign-in flows. |
+| `sidePanel` | To show the Sally chat and shopping tool panel inside Chrome. |
 
 ## Host Permissions Justification
 
@@ -126,27 +138,30 @@ https://heysalad.app/help
 | `groceries.asda.com` | To automate shopping on ASDA's grocery website |
 | `ocado.com` | To automate shopping on Ocado's website |
 | `waitrose.com` | To automate shopping on Waitrose's grocery website |
+| `morrisons.com` | To automate shopping on Morrisons grocery pages |
+| `aldi.co.uk` | To automate shopping on Aldi grocery pages |
 | `oauth.heysalad.app` | For secure user authentication via magic link |
 | `shopping-agent.heysalad-o.workers.dev` | For AI-powered product matching API |
+| `sally-api.heysalad.app` | For Sally account, profile, and shopping services |
 
 ## Review Notes for Google
 
 ```
-Sally is a shopping automation tool that helps users add groceries to their cart faster.
+Sally is a chat-first grocery assistant that helps users plan groceries and optionally run supermarket shopping as a browser tool.
 
 Key points for review:
 1. We do NOT store or transmit user passwords
 2. We use the user's existing logged-in session
-3. AI matching only receives product names, not personal data
-4. All automation happens client-side in the user's browser
-5. OAuth authentication uses industry-standard magic links
+3. Users choose when to start a shopping run
+4. Sally may send grocery item names, store choice, account identity, billing status, and shopping progress to HeySalad services to operate the assistant
+5. OAuth authentication uses secure magic links
 
 To test:
 1. Install the extension
 2. Go to https://www.tesco.com/groceries/
 3. Log in with your Tesco account (or create one)
 4. Click the Sally icon
-5. Enter items like "Milk" and "Bread"
-6. Click "Let Sally Shop!"
+5. Ask Sally to plan groceries or paste items like "Milk" and "Bread"
+6. Start shopping when Sally stages the list
 7. Watch Sally search and add items to your cart
 ```

@@ -15,12 +15,98 @@
 const OAUTH_URL = 'https://oauth.heysalad.app';
 const SHOPPING_AGENT_URL = 'https://shopping-agent.heysalad-o.workers.dev';
 const SALLY_API_URL = 'https://sally-api.heysalad-o.workers.dev';
-const UPGRADE_URL = 'https://heysalad.app';
+const OPENAI_API_URL = 'https://api.openai.com/v1';
+const SALLY_FRONTIER_MODELS = {
+  composer: 'gpt-5.6-terra',
+  classifier: 'gpt-5.6-luna',
+  realtime: 'gpt-5.6-luna',
+};
+const DEFAULT_COMPOSER_MODEL = SALLY_FRONTIER_MODELS.composer;
+const DEFAULT_CLASSIFIER_MODEL = SALLY_FRONTIER_MODELS.classifier;
+const DEFAULT_REALTIME_MODEL = SALLY_FRONTIER_MODELS.realtime;
+const UPGRADE_URL = 'https://heysalad.app/#settings/billing';
+const FREE_AUTONOMOUS_SHOP_LIMIT = 2;
 const SALLY_TAB_GROUP_TITLE = 'Sally';
-const SALLY_TAB_GROUP_COLOR = 'orange';
+const SALLY_TAB_GROUP_COLOR = 'red';
+// AI calls are proxied through Sally API (Cloudflare AI Gateway)
+// to comply with Chrome Web Store MV3 policy (no remotely hosted code).
+const RECIPE_NOTIFICATION_PREFIX = 'sally_recipe_';
 
 // Import WebSocket client
-importScripts('websocket-client.js');
+importScripts(
+  'websocket-client.js',
+  '../shared/task-metrics.js',
+  '../shared/store-routing.js',
+  '../shared/item-parser.js'
+);
+
+const taskMetricsApi = globalThis.HeySaladTaskMetrics || {};
+const storeRoutingApi = globalThis.HeySaladStoreRouting || {};
+const itemParserApi = globalThis.HeySaladItemParser || {};
+const computeTaskMetrics = taskMetricsApi.computeTaskMetrics || ((task) => {
+  const items = Array.isArray(task?.items) ? task.items : [];
+  const addedItems = items.filter((item) => item.status === 'added').length;
+  const failedItems = items.filter((item) => item.status === 'failed').length;
+  const totalUnits = items.reduce((sum, item) => sum + (Number(item.quantity) || 1), 0);
+  const addedUnits = items
+    .filter((item) => item.status === 'added')
+    .reduce((sum, item) => sum + (Number(item.quantity) || 1), 0);
+  const failedUnits = items
+    .filter((item) => item.status === 'failed')
+    .reduce((sum, item) => sum + (Number(item.quantity) || 1), 0);
+
+  return {
+    totalItems: items.length,
+    addedItems,
+    failedItems,
+    processedItems: addedItems + failedItems,
+    remainingItems: Math.max(items.length - (addedItems + failedItems), 0),
+    totalUnits,
+    addedUnits,
+    failedUnits,
+    processedUnits: addedUnits + failedUnits,
+    remainingUnits: Math.max(totalUnits - (addedUnits + failedUnits), 0),
+    hasMultiQuantity: totalUnits > items.length,
+  };
+});
+const normalizeShoppingItem = itemParserApi.normalizeShoppingItem || ((input) => {
+  if (typeof input === 'string') {
+    return { name: String(input || '').trim(), quantity: 1, searchQuery: String(input || '').trim() };
+  }
+
+  return {
+    ...input,
+    name: String(input?.name || '').trim(),
+    quantity: Number(input?.quantity) > 0 ? Number(input.quantity) : 1,
+    searchQuery: String(input?.searchQuery || input?.name || '').trim(),
+  };
+});
+const getProgressPercentage = taskMetricsApi.getProgressPercentage || ((task) => {
+  const metrics = computeTaskMetrics(task);
+  return metrics.totalItems > 0 ? Math.round((metrics.processedItems / metrics.totalItems) * 100) : 0;
+});
+const detectStoreFromUrl = storeRoutingApi.detectStoreFromUrl || ((url) => {
+  const urlLower = String(url || '').toLowerCase();
+  if (urlLower.includes('tesco.com')) return 'tesco';
+  if (urlLower.includes('sainsburys.co.uk')) return 'sainsburys';
+  if (urlLower.includes('asda.com')) return 'asda';
+  if (urlLower.includes('ocado.com')) return 'ocado';
+  if (urlLower.includes('waitrose.com')) return 'waitrose';
+  if (urlLower.includes('morrisons.com')) return 'morrisons';
+  if (urlLower.includes('aldi.co.uk')) return 'aldi';
+  return null;
+});
+const isSupportedSupermarketUrl = storeRoutingApi.isSupportedSupermarketUrl || ((url) => Boolean(detectStoreFromUrl(url)));
+const resolveShoppingStore = storeRoutingApi.resolveShoppingStore || (({ requestedStore, detectedStore }) => {
+  const finalStore = requestedStore || detectedStore || null;
+  return {
+    requestedStore: requestedStore || null,
+    detectedStore: detectedStore || null,
+    finalStore,
+    shouldNavigateToStore: Boolean(finalStore) && (!detectedStore || (Boolean(requestedStore) && requestedStore !== detectedStore)),
+    hasStoreMismatch: Boolean(requestedStore && detectedStore && requestedStore !== detectedStore),
+  };
+});
 
 // Store URLs for manual fallback
 const STORE_URLS = {
@@ -37,7 +123,7 @@ const CART_URLS = {
   tesco: 'https://www.tesco.com/groceries/en-GB/trolley',
   sainsburys: 'https://www.sainsburys.co.uk/gol-ui/trolley',
   asda: 'https://groceries.asda.com/trolley',
-  ocado: 'https://www.ocado.com/webshop/getBasket.do',
+  ocado: 'https://www.ocado.com/basket',
   waitrose: 'https://www.waitrose.com/ecom/shop/trolley',
   morrisons: 'https://groceries.morrisons.com/trolley',
   aldi: 'https://www.aldi.co.uk/trolley'
@@ -45,6 +131,7 @@ const CART_URLS = {
 
 // WebSocket client instance
 let wsClient = null;
+const recipeNotificationCache = new Map();
 
 async function configureSidePanel() {
   if (!chrome.sidePanel?.setPanelBehavior) return;
@@ -116,13 +203,42 @@ chrome.runtime.onInstalled.addListener(() => {
   chrome.storage.local.set({ 
     isAuthenticated: false,
     currentTask: null,
-    taskHistory: []
+    taskHistory: [],
+    llmConfig: {
+      provider: 'openai',
+      classifierModel: DEFAULT_CLASSIFIER_MODEL,
+      composerModel: DEFAULT_COMPOSER_MODEL,
+      realtimeModel: DEFAULT_REALTIME_MODEL,
+    },
   });
   configureSidePanel();
 });
 
 chrome.runtime.onStartup?.addListener(() => {
   configureSidePanel();
+});
+
+chrome.notifications?.onButtonClicked?.addListener(async (notificationId, buttonIndex) => {
+  if (!notificationId.startsWith(RECIPE_NOTIFICATION_PREFIX)) return;
+
+  const recipe = recipeNotificationCache.get(notificationId) ||
+    (await findSavedRecipeByNotificationId(notificationId));
+  if (!recipe) return;
+
+  if (buttonIndex === 0) {
+    await startRecipeShopping({ recipeId: recipe.id });
+    return;
+  }
+
+  if (buttonIndex === 1) {
+    await saveRecipeForReorder(recipe);
+  }
+});
+
+chrome.notifications?.onClicked?.addListener(async (notificationId) => {
+  if (!notificationId.startsWith(RECIPE_NOTIFICATION_PREFIX)) return;
+  const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  await openSidePanelForSender(activeTab ? { tab: activeTab } : {});
 });
 
 // Listen for tab updates to re-inject content script after navigation
@@ -134,15 +250,11 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
   const data = await chrome.storage.local.get(['currentTask']);
   const task = data.currentTask;
   
-  if (!task || task.status === 'complete' || task.status === 'stopped') return;
+  if (!task || task.status === 'complete' || task.status === 'stopped' || task.status === 'paused') return;
   
   // Check if this is a supermarket URL
   const url = tab.url || '';
-  const isSupported = url.includes('tesco.com') || 
-                      url.includes('sainsburys.co.uk') || 
-                      url.includes('asda.com') || 
-                      url.includes('ocado.com') || 
-                      url.includes('waitrose.com');
+  const isSupported = isSupportedSupermarketUrl(url);
   
   if (!isSupported) return;
   
@@ -152,7 +264,11 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
     // Inject content script
     await chrome.scripting.executeScript({
       target: { tabId },
-      files: ['content-scripts/base.js']
+      files: [
+        'shared/task-metrics.js',
+        'shared/product-language.js',
+        'content-scripts/base.js',
+      ]
     });
     
     // Also inject CSS
@@ -195,6 +311,8 @@ async function handleMessage(message, sender) {
         return await checkAuth();
       case 'GET_SUBSCRIPTION_STATUS':
         return await getSubscriptionStatus();
+      case 'CREATE_SUBSCRIPTION_CHECKOUT':
+        return await createSubscriptionCheckout(message.data);
       case 'OPEN_SIDE_PANEL':
         return await openSidePanelForSender(sender);
       case 'START_SHOPPING':
@@ -207,12 +325,28 @@ async function handleMessage(message, sender) {
         });
       case 'STOP_SHOPPING':
         return await stopShopping();
+      case 'PAUSE_SHOPPING':
+        return await pauseShopping();
+      case 'RESUME_SHOPPING':
+        return await resumeShopping();
       case 'STOP_SHOPPING_FROM_MOBILE':
         return await stopShopping();
       case 'GET_TASK_STATUS':
         return await getTaskStatus();
       case 'CHECK_CUA_STATUS':
         return await checkCUAStatus();
+      case 'CLASSIFY_MESSAGE':
+        return await classifyMessageRequest(message.data);
+      case 'COMPOSE_CHAT_REPLY':
+        return await composeChatReplyRequest(message.data);
+      case 'RECIPE_DETECTED':
+        return await handleRecipeDetected(message.data, sender);
+      case 'RECIPE_CANDIDATE_DETECTED':
+        return await handleRecipeCandidateDetected(message.data, sender);
+      case 'GET_SAVED_RECIPES':
+        return await getSavedRecipes();
+      case 'START_RECIPE_SHOPPING':
+        return await startRecipeShopping(message.data);
       // Content script progress messages
       case 'ITEM_ADDED':
         return await handleItemAdded(message.data);
@@ -335,13 +469,14 @@ async function handleAuthCallback(token) {
     const result = await response.json();
     
     if (result.valid) {
+      const user = await enrichUserProfile(result.user, token);
       await chrome.storage.local.set({ 
         isAuthenticated: true,
         authToken: token,
-        user: result.user
+        user
       });
       
-      return { success: true, user: result.user };
+      return { success: true, user };
     } else {
       return { success: false, error: result.message || 'Invalid token' };
     }
@@ -383,9 +518,10 @@ async function checkAuth() {
       const result = await response.json();
       
       if (result.valid) {
-        await chrome.storage.local.set({ user: result.user });
-        const subscription = await getSubscriptionStatus(result.user);
-        return { isAuthenticated: true, user: result.user, subscription };
+        const user = await enrichUserProfile(result.user, data.authToken);
+        await chrome.storage.local.set({ user });
+        const subscription = await getSubscriptionStatus(user);
+        return { isAuthenticated: true, user, subscription };
       }
     } catch (error) {
       console.error('[Sally] Token validation error:', error);
@@ -398,51 +534,339 @@ async function checkAuth() {
   return { isAuthenticated: false };
 }
 
-function toExtensionPlan(subscription) {
-  const tier = subscription?.tier || subscription?.subscription?.tier || 'free';
+async function enrichUserProfile(user = {}, token) {
+  if (!token) return user || {};
+
+  const profile = await fetchUserProfile(token);
+  return normalizeUserProfile({ ...(user || {}), ...(profile || {}) });
+}
+
+async function fetchUserProfile(token) {
+  const endpoints = [
+    `${OAUTH_URL}/api/me`,
+    `${OAUTH_URL}/api/user`,
+    `${SALLY_API_URL}/api/me`,
+    `${SALLY_API_URL}/api/users/me`,
+  ];
+
+  for (const endpoint of endpoints) {
+    try {
+      const response = await fetch(endpoint, {
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) continue;
+
+      const result = await response.json();
+      return result.user || result.profile || result.data || result;
+    } catch (error) {
+      console.warn('[Sally] User profile lookup failed:', endpoint, error.message);
+    }
+  }
+
+  return null;
+}
+
+function normalizeUserProfile(user = {}) {
+  const name = user.name
+    || user.full_name
+    || user.displayName
+    || user.display_name
+    || [user.given_name || user.firstName || user.first_name, user.family_name || user.lastName || user.last_name]
+      .filter(Boolean)
+      .join(' ')
+    || '';
+  const avatarUrl = user.avatarUrl
+    || user.avatar_url
+    || user.picture
+    || user.image
+    || user.photoURL
+    || user.photo_url
+    || '';
+
+  return {
+    ...user,
+    ...(name ? { name } : {}),
+    ...(avatarUrl ? { avatarUrl } : {}),
+  };
+}
+
+function normalizePlanTier(value) {
+  const tier = String(value || 'free').toLowerCase();
+  if (tier === 'max') return 'max';
+  if (tier === 'premium') return 'premium';
+  if (tier === 'pro') return 'pro';
+  return 'free';
+}
+
+function toExtensionPlan(subscription, source = 'heysalad-accounts') {
+  const tier = normalizePlanTier(subscription?.tier || subscription?.subscription?.tier);
+  const automationAllowed = tier === 'pro' || tier === 'max' || tier === 'premium';
+  const labels = {
+    free: 'Free',
+    pro: 'HeySalad Pro',
+    max: 'HeySalad Max',
+    premium: 'Sally Premium',
+  };
+
   return {
     tier,
-    isPaid: tier === 'premium' || tier === 'pro',
-    automationAllowed: tier === 'premium' || tier === 'pro',
-    label: tier === 'pro' ? 'Sally Pro' : tier === 'premium' ? 'Sally Premium' : 'Free',
-    source: subscription?.source || 'sally-api',
+    isPaid: automationAllowed,
+    automationAllowed,
+    label: labels[tier] || 'Free',
+    source: subscription?.source || source,
     upgradeUrl: UPGRADE_URL,
+    freeShopLimit: FREE_AUTONOMOUS_SHOP_LIMIT,
   };
+}
+
+function getFreeShopUsageKey(user) {
+  const userKey = user?.id || user?.user_id || user?.sub || user?.email || 'anonymous';
+  return `freeShopUsage:${userKey}`;
+}
+
+async function enrichPlanWithFreeAllowance(plan, user) {
+  if (plan.automationAllowed) {
+    return {
+      ...plan,
+      freeShopsUsed: 0,
+      freeShopsRemaining: 0,
+    };
+  }
+
+  const usageKey = getFreeShopUsageKey(user);
+  const storage = await chrome.storage.local.get([usageKey]);
+  const used = Math.max(0, Number(storage[usageKey]) || 0);
+  const remaining = Math.max(FREE_AUTONOMOUS_SHOP_LIMIT - used, 0);
+
+  return {
+    ...plan,
+    freeShopsUsed: used,
+    freeShopsRemaining: remaining,
+  };
+}
+
+async function recordFreeShopUse(entitlement) {
+  if (!entitlement.freeAllowance || !entitlement.usageKey) return;
+
+  const storage = await chrome.storage.local.get([entitlement.usageKey]);
+  const used = Math.max(0, Number(storage[entitlement.usageKey]) || 0);
+  await chrome.storage.local.set({ [entitlement.usageKey]: used + 1 });
+}
+
+function applyShoppingUsageToPlan(plan, usage) {
+  if (!usage) return plan;
+
+  const limit = Number(usage.limit);
+  const currentUsage = Math.max(0, Number(usage.currentUsage) || 0);
+  const isUnlimited = limit === -1;
+  const remaining = isUnlimited
+    ? -1
+    : Math.max(0, Number(usage.remaining ?? (limit - currentUsage)) || 0);
+
+  return {
+    ...plan,
+    usage: {
+      action: 'shopping_request',
+      allowed: usage.allowed !== false,
+      currentUsage,
+      limit,
+      remaining,
+      tier: usage.tier || plan.tier,
+      message: usage.message,
+      upgradeUrl: normalizeUpgradeUrl(usage.upgradeUrl || plan.upgradeUrl || UPGRADE_URL),
+    },
+    freeShopLimit: plan.automationAllowed ? 0 : Math.max(0, limit),
+    freeShopsUsed: plan.automationAllowed ? 0 : currentUsage,
+    freeShopsRemaining: plan.automationAllowed ? 0 : remaining,
+  };
+}
+
+function normalizeUpgradeUrl(url) {
+  const value = String(url || '').trim();
+  if (!value) return UPGRADE_URL;
+  if (value.startsWith('http://') || value.startsWith('https://')) return value;
+  if (value.startsWith('/')) return `${OAUTH_URL}${value}`;
+  return UPGRADE_URL;
+}
+
+async function checkShoppingUsage(authToken) {
+  if (!authToken) return null;
+
+  const response = await fetch(`${OAUTH_URL}/api/usage/check`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${authToken}`,
+    },
+    body: JSON.stringify({ action: 'shopping_request' }),
+  });
+
+  const result = await response.json().catch(() => ({}));
+  return {
+    ...result,
+    allowed: response.ok && result.allowed !== false,
+  };
+}
+
+async function consumeShoppingUsage(authToken) {
+  if (!authToken) {
+    return {
+      success: false,
+      message: 'Sign in to start autonomous shopping.',
+      upgradeUrl: UPGRADE_URL,
+    };
+  }
+
+  const response = await fetch(`${OAUTH_URL}/api/usage/increment`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${authToken}`,
+    },
+    body: JSON.stringify({ action: 'shopping_request' }),
+  });
+
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok || result.success === false) {
+    return {
+      success: false,
+      message: result.message || 'Upgrade to keep Sally shopping for you.',
+      currentUsage: result.currentUsage ?? result.newCount,
+      limit: result.limit,
+      remaining: result.remaining,
+      upgradeUrl: normalizeUpgradeUrl(result.upgradeUrl || UPGRADE_URL),
+    };
+  }
+
+  return {
+    success: true,
+    currentUsage: result.newCount,
+    limit: result.limit,
+    remaining: result.remaining,
+  };
+}
+
+async function getCentralSubscriptionStatus(authData) {
+  if (!authData.authToken) {
+    return null;
+  }
+
+  const response = await fetch(`${OAUTH_URL}/api/subscription`, {
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${authData.authToken}`,
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Central subscription HTTP ${response.status}`);
+  }
+
+  const result = await response.json();
+  if (!result.success) {
+    throw new Error(result.message || 'Central subscription lookup failed');
+  }
+
+  return toExtensionPlan({
+    tier: result.tier || result.subscription?.tier || authData.user?.tier,
+    subscription: result.subscription,
+    source: 'heysalad-accounts',
+  }, 'heysalad-accounts');
+}
+
+async function getLegacySallySubscriptionStatus(authData, user) {
+  const userId = user?.id || user?.user_id || user?.sub || user?.email;
+
+  if (!userId) {
+    return toExtensionPlan({ tier: 'free' });
+  }
+
+  const response = await fetch(`${SALLY_API_URL}/api/subscriptions/status`, {
+    headers: {
+      'Content-Type': 'application/json',
+      'X-User-ID': userId,
+      'X-User-Email': user?.email || '',
+      ...(authData.authToken ? { 'Authorization': `Bearer ${authData.authToken}` } : {}),
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Legacy Sally subscription HTTP ${response.status}`);
+  }
+
+  const result = await response.json();
+  return toExtensionPlan(result.subscription, 'sally-api');
 }
 
 async function getSubscriptionStatus(userOverride) {
   try {
     const authData = await chrome.storage.local.get(['user', 'authToken']);
     const user = userOverride || authData.user;
-    const userId = user?.id || user?.user_id || user?.sub || user?.email;
 
-    if (!userId) {
+    if (!user && !authData.authToken) {
       return {
         success: true,
-        plan: toExtensionPlan({ tier: 'free' }),
+        plan: await enrichPlanWithFreeAllowance(toExtensionPlan({ tier: 'free' }), null),
       };
     }
 
-    const response = await fetch(`${SALLY_API_URL}/api/subscriptions/status`, {
-      headers: {
-        'Content-Type': 'application/json',
-        'X-User-ID': userId,
-        'X-User-Email': user.email || '',
-        ...(authData.authToken ? { 'Authorization': `Bearer ${authData.authToken}` } : {}),
-      },
-    });
-
-    if (!response.ok) {
-      throw new Error(`Subscription status HTTP ${response.status}`);
+    let plan = null;
+    let centralError = null;
+    try {
+      plan = await getCentralSubscriptionStatus({ ...authData, user });
+    } catch (error) {
+      centralError = error;
+      console.warn('[Sally] Central subscription status unavailable:', error);
     }
 
-    const result = await response.json();
-    const plan = toExtensionPlan(result.subscription);
+    if (!plan) {
+      plan = await getLegacySallySubscriptionStatus(authData, user);
+    }
+
+    try {
+      const usage = await checkShoppingUsage(authData.authToken);
+      plan = applyShoppingUsageToPlan(plan, usage);
+    } catch (error) {
+      console.warn('[Sally] Backend usage status unavailable:', error);
+      plan = plan.automationAllowed
+        ? plan
+        : {
+            ...plan,
+            usage: {
+              action: 'shopping_request',
+              allowed: false,
+              currentUsage: 0,
+              limit: FREE_AUTONOMOUS_SHOP_LIMIT,
+              remaining: 0,
+              tier: plan.tier,
+              message: 'Billing usage check is unavailable. Please try again shortly.',
+              upgradeUrl: UPGRADE_URL,
+            },
+            freeShopLimit: FREE_AUTONOMOUS_SHOP_LIMIT,
+            freeShopsUsed: FREE_AUTONOMOUS_SHOP_LIMIT,
+            freeShopsRemaining: 0,
+          };
+    }
+
+    if (!plan.usage) {
+      plan = await enrichPlanWithFreeAllowance(plan, user);
+    }
     await chrome.storage.local.set({ extensionPlan: plan });
-    return { success: true, plan };
+    return {
+      success: true,
+      plan,
+      warning: centralError ? centralError.message : undefined,
+    };
   } catch (error) {
     console.error('[Sally] Subscription status error:', error);
-    const fallbackPlan = toExtensionPlan({ tier: 'free' });
+    const fallbackPlan = await enrichPlanWithFreeAllowance(
+      toExtensionPlan({ tier: 'free', source: 'billing-unavailable' }, 'billing-unavailable'),
+      null
+    );
     await chrome.storage.local.set({ extensionPlan: fallbackPlan });
     return { success: false, error: error.message, plan: fallbackPlan };
   }
@@ -450,16 +874,84 @@ async function getSubscriptionStatus(userOverride) {
 
 async function ensureAutomationAccess() {
   const subscription = await getSubscriptionStatus();
+
+  if (subscription.plan?.usage?.allowed === false) {
+    return {
+      allowed: false,
+      plan: subscription.plan,
+      error: subscription.plan.usage.message || 'Upgrade to keep Sally shopping for you.',
+      upgradeUrl: subscription.plan.usage.upgradeUrl || subscription.plan.upgradeUrl || UPGRADE_URL,
+    };
+  }
+
   if (subscription.plan?.automationAllowed) {
     return { allowed: true, plan: subscription.plan };
+  }
+
+  const authData = await chrome.storage.local.get(['user', 'authToken']);
+  if (
+    subscription.plan?.tier === 'free' &&
+    subscription.plan.freeShopsRemaining > 0 &&
+    (authData.user || authData.authToken)
+  ) {
+    return {
+      allowed: true,
+      plan: subscription.plan,
+      freeAllowance: true,
+      usageKey: getFreeShopUsageKey(authData.user),
+    };
   }
 
   return {
     allowed: false,
     plan: subscription.plan,
-    error: 'Autonomous shopping is part of Sally Premium or Pro. Upgrade in Sally to let the extension shop for you.',
+    error: 'Your 2 free autonomous shops are used. Upgrade to HeySalad Pro or Max to keep Sally shopping for you.',
     upgradeUrl: subscription.plan?.upgradeUrl || UPGRADE_URL,
   };
+}
+
+async function createSubscriptionCheckout(data = {}) {
+  const tier = ['pro', 'max'].includes(data?.tier) ? data.tier : 'pro';
+  const storage = await chrome.storage.local.get(['authToken']);
+
+  if (!storage.authToken) {
+    return {
+      success: false,
+      error: 'Sign in before upgrading Sally.',
+      upgradeUrl: UPGRADE_URL,
+    };
+  }
+
+  const successUrl = `${OAUTH_URL}/billing/success?source=extension&session_id={CHECKOUT_SESSION_ID}`;
+  const cancelUrl = `${OAUTH_URL}/upgrade?tier=free&usage=0&limit=${FREE_AUTONOMOUS_SHOP_LIMIT}&action=shopping_request`;
+
+  try {
+    const response = await fetch(`${OAUTH_URL}/api/subscribe`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${storage.authToken}`,
+      },
+      body: JSON.stringify({ tier, successUrl, cancelUrl }),
+    });
+
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || !result.success) {
+      return {
+        success: false,
+        error: result.message || 'Could not start checkout.',
+        upgradeUrl: UPGRADE_URL,
+      };
+    }
+
+    return { success: true, checkoutUrl: result.checkoutUrl };
+  } catch (error) {
+    return {
+      success: false,
+      error: error.message || 'Could not start checkout.',
+      upgradeUrl: UPGRADE_URL,
+    };
+  }
 }
 
 /**
@@ -480,6 +972,643 @@ async function checkCUAStatus() {
   }
 }
 
+async function classifyMessageRequest(data = {}) {
+  const text = (data.text || '').trim();
+
+  if (!text) {
+    return { success: false, error: 'Message is required' };
+  }
+
+  const localClassification = classifyMessageLocally(text, data.context || {});
+
+  if (localClassification.reason === 'capability question') {
+    return { success: true, classification: localClassification };
+  }
+
+  try {
+    const response = await fetch(`${SALLY_API_URL}/api/extension/ai/classify`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, context: data.context || {} }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Sally API classify error: ${response.status}`);
+    }
+
+    const result = await response.json();
+    if (!result.success || !result.classification) {
+      throw new Error(result.error || 'Classification failed');
+    }
+
+    return {
+      success: true,
+      classification: normalizeClassification(result.classification, localClassification, data.context || {}),
+    };
+  } catch (error) {
+    console.error('[Sally Classifier] API classifier failed:', error);
+    return { success: true, classification: localClassification, fallback: true };
+  }
+}
+
+function classifyMessageLocally(text, context = {}) {
+  const store = context.store || inferStoreFromText(text) || null;
+
+  if (isCapabilityQuestion(text)) {
+    return {
+      intent: 'chat',
+      confidence: 0.98,
+      reason: 'capability question',
+      toolName: 'none',
+      requiresConfirmation: false,
+      store,
+      mode: context.mode || 'unspecified',
+      items: [],
+      missingFields: [],
+      assistantHint: 'I can answer questions, help plan a grocery shop, and run shopping only when you give me specific items.',
+    };
+  }
+
+  const items = parseClassifierItems(text);
+  const groceryScore = items.filter((item) => looksLikeGroceryItem(item.name)).length;
+  const explicitShopping = [
+    /\b(buy|get|order|shop\s+for|grocer|groceries|basket|cart|trolley|checkout)\b/i,
+    /\badd\s+to\s+(basket|cart|trolley)\b/i,
+  ].some((pattern) => pattern.test(text));
+  const listLike = text.includes('\n') || text.includes(',') || /\b(and|plus)\b/i.test(text);
+
+  if (explicitShopping && items.length && (groceryScore > 0 || listLike)) {
+    return {
+      intent: 'shopping_tool',
+      confidence: 0.78,
+      reason: 'shopping request',
+      toolName: 'start_shopping',
+      requiresConfirmation: true,
+      store,
+      mode: context.mode || 'local',
+      items,
+      missingFields: [],
+      assistantHint: '',
+    };
+  }
+
+  if (listLike && items.length >= 2 && groceryScore >= 2) {
+    return {
+      intent: 'shopping_tool',
+      confidence: 0.72,
+      reason: 'grocery-like list',
+      toolName: 'start_shopping',
+      requiresConfirmation: true,
+      store,
+      mode: context.mode || 'local',
+      items,
+      missingFields: [],
+      assistantHint: '',
+    };
+  }
+
+  if (/\b(grocer|groceries|shopping|shop)\b/i.test(text)) {
+    return {
+      intent: 'clarify',
+      confidence: 0.72,
+      reason: 'shopping intent without specific items',
+      toolName: 'none',
+      requiresConfirmation: false,
+      store,
+      mode: context.mode || 'unspecified',
+      items: [],
+      missingFields: ['items'],
+      assistantHint: 'What grocery items would you like me to shop for?',
+    };
+  }
+
+  return {
+    intent: 'chat',
+    confidence: 0.7,
+    reason: 'generic message',
+    toolName: 'none',
+    requiresConfirmation: false,
+    store,
+    mode: context.mode || 'unspecified',
+    items: [],
+    missingFields: [],
+    assistantHint: getLocalChatFallback(text),
+  };
+}
+
+async function composeChatReplyRequest(data = {}) {
+  const text = (data.text || '').trim();
+
+  if (!text) {
+    return { success: false, error: 'Message is required' };
+  }
+
+  try {
+    const response = await fetch(`${SALLY_API_URL}/api/extension/ai/compose`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, history: data.history || [] }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Sally API compose error: ${response.status}`);
+    }
+
+    const result = await response.json();
+    if (!result.success || !result.reply) {
+      throw new Error(result.error || 'Compose failed');
+    }
+
+    return { success: true, reply: result.reply };
+  } catch (error) {
+    console.error('[Sally Composer] API composer failed:', error);
+    return {
+      success: true,
+      reply: getLocalChatFallback(text),
+      fallback: true,
+    };
+  }
+}
+
+async function handleRecipeDetected(data = {}, sender = {}) {
+  const ingredients = Array.isArray(data.ingredients)
+    ? data.ingredients.map((item) => String(item || '').trim()).filter(Boolean)
+    : [];
+
+  if (ingredients.length < 3) {
+    return { success: false, error: 'Not enough ingredients detected' };
+  }
+
+  const recipe = await saveRecipeForReorder({
+    id: createRecipeId(data.url, data.title, ingredients),
+    title: String(data.title || 'Recipe').trim(),
+    source: String(data.source || 'page'),
+    url: String(data.url || sender.tab?.url || ''),
+    host: String(data.host || ''),
+    ingredients,
+    detectedAt: new Date().toISOString(),
+  });
+
+  const notificationId = `${RECIPE_NOTIFICATION_PREFIX}${recipe.id}`;
+  recipeNotificationCache.set(notificationId, recipe);
+
+  await appendActivityEvent({
+    kind: 'tool',
+    title: 'Recipe saved',
+    text: `I found ${ingredients.length} ingredients in "${recipe.title}". You can shop or reorder this list from Sally.`,
+    tone: 'info',
+    icon: '🍽',
+  });
+
+  chrome.notifications.create(notificationId, {
+    type: 'basic',
+    iconUrl: 'icons/icon128.png',
+    title: 'Sally found recipe ingredients',
+    message: `${recipe.title}: ${ingredients.length} items ready to shop or reorder.`,
+    buttons: [
+      { title: 'Add to cart' },
+      { title: 'Save' },
+    ],
+    priority: 1,
+  });
+
+  return { success: true, recipe };
+}
+
+async function handleRecipeCandidateDetected(data = {}, sender = {}) {
+  const candidate = {
+    id: createRecipeId(data.url, data.title, [data.description || '']),
+    title: String(data.title || 'Recipe video').trim(),
+    description: String(data.description || '').trim(),
+    source: String(data.source || 'social-title'),
+    url: String(data.url || sender.tab?.url || ''),
+    host: String(data.host || ''),
+    detectedAt: new Date().toISOString(),
+  };
+
+  const dataStore = await chrome.storage.local.get(['recipeCandidates']);
+  const candidates = Array.isArray(dataStore.recipeCandidates) ? dataStore.recipeCandidates : [];
+  await chrome.storage.local.set({
+    recipeCandidates: [candidate, ...candidates.filter((item) => item.id !== candidate.id)].slice(0, 100),
+  });
+
+  await appendActivityEvent({
+    kind: 'tool',
+    title: 'Recipe video found',
+    text: `I found "${candidate.title}", but the ingredients are hidden by the platform. Ask Sally to build a starter grocery list or open the caption if it is available.`,
+    tone: 'info',
+    icon: '🎬',
+  });
+
+  chrome.notifications.create(`${RECIPE_NOTIFICATION_PREFIX}candidate_${candidate.id}`, {
+    type: 'basic',
+    iconUrl: 'icons/icon128.png',
+    title: 'Sally found a recipe video',
+    message: `${candidate.title}. Ingredients are not visible yet, but Sally can build a starter list.`,
+    buttons: [
+      { title: 'Open Sally' },
+      { title: 'Save' },
+    ],
+    priority: 1,
+  });
+
+  return { success: true, candidate };
+}
+
+async function saveRecipeForReorder(recipe) {
+  const normalized = {
+    ...recipe,
+    id: recipe.id || createRecipeId(recipe.url, recipe.title, recipe.ingredients || []),
+    title: String(recipe.title || 'Recipe').trim(),
+    ingredients: (recipe.ingredients || []).map((item) => String(item || '').trim()).filter(Boolean),
+    savedAt: recipe.savedAt || new Date().toISOString(),
+  };
+
+  const data = await chrome.storage.local.get(['savedRecipeLists']);
+  const savedRecipeLists = Array.isArray(data.savedRecipeLists) ? data.savedRecipeLists : [];
+  const withoutDuplicate = savedRecipeLists.filter((item) => item.id !== normalized.id);
+  await chrome.storage.local.set({ savedRecipeLists: [normalized, ...withoutDuplicate].slice(0, 100) });
+  return normalized;
+}
+
+async function getSavedRecipes() {
+  const data = await chrome.storage.local.get(['savedRecipeLists']);
+  return { recipes: Array.isArray(data.savedRecipeLists) ? data.savedRecipeLists : [] };
+}
+
+async function findSavedRecipeByNotificationId(notificationId) {
+  const recipeId = notificationId.replace(RECIPE_NOTIFICATION_PREFIX, '');
+  const { recipes } = await getSavedRecipes();
+  return recipes.find((recipe) => recipe.id === recipeId) || null;
+}
+
+async function startRecipeShopping({ recipeId, recipe } = {}) {
+  let targetRecipe = recipe;
+  if (!targetRecipe && recipeId) {
+    const { recipes } = await getSavedRecipes();
+    targetRecipe = recipes.find((item) => item.id === recipeId);
+  }
+
+  if (!targetRecipe?.ingredients?.length) {
+    return { success: false, error: 'No saved recipe ingredients found' };
+  }
+
+  const items = targetRecipe.ingredients
+    .map((ingredient) => normalizeShoppingItem(ingredient))
+    .filter((item) => item?.name);
+
+  await appendActivityEvent({
+    kind: 'tool',
+    title: 'Recipe shopping started',
+    text: `I am turning "${targetRecipe.title}" into a shopping run with ${items.length} items.`,
+    tone: 'info',
+    icon: '🛒',
+  });
+
+  return startShopping({ items });
+}
+
+function createRecipeId(url = '', title = '', ingredients = []) {
+  const input = `${url}|${title}|${ingredients.slice(0, 20).join('|')}`.toLowerCase();
+  let hash = 0;
+  for (let index = 0; index < input.length; index += 1) {
+    hash = ((hash << 5) - hash) + input.charCodeAt(index);
+    hash |= 0;
+  }
+  return Math.abs(hash).toString(36);
+}
+
+async function appendActivityEvent(event) {
+  const data = await chrome.storage.local.get(['activityFeed']);
+  const activityFeed = Array.isArray(data.activityFeed) ? data.activityFeed : [];
+  const item = {
+    id: `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    timestamp: new Date().toISOString(),
+    tone: 'info',
+    icon: 'ℹ️',
+    ...event,
+  };
+  await chrome.storage.local.set({ activityFeed: [item, ...activityFeed].slice(0, 30) });
+}
+
+async function composeChatReplyWithOpenAI(text, history, openaiKey, llmConfig = {}) {
+  const response = await fetch(`${OPENAI_API_URL}/responses`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${openaiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: llmConfig.composerModel || DEFAULT_COMPOSER_MODEL,
+      input: [
+        {
+          role: 'system',
+          content: [
+            'You are Sally, a concise and friendly shopping assistant in a Chrome extension.',
+            'Answer normal chat naturally.',
+            'Do not claim you are shopping unless a shopping tool has been confirmed.',
+            'If the user asks to shop, ask for specific grocery items.',
+          ].join(' '),
+        },
+        ...history.slice(-8).map((entry) => ({
+          role: entry.role === 'user' ? 'user' : 'assistant',
+          content: entry.text || entry.content || '',
+        })),
+        { role: 'user', content: text },
+      ],
+      max_output_tokens: 350,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`OpenAI composer error: ${response.status}`);
+  }
+
+  const data = await response.json();
+  return extractResponseOutputText(data) || getLocalChatFallback(text);
+}
+
+function getLocalChatFallback(text) {
+  const normalized = String(text || '').trim().toLowerCase();
+
+  if (/^(hi|hello|hey|hiya|yo)\b/.test(normalized)) {
+    return 'Hi, I am Sally. I can chat here, help turn groceries into a shopping list, and stage a shopping run when you are ready.';
+  }
+
+  if (/how\s+are\s+you/.test(normalized)) {
+    return 'I am good and ready to help. You can ask me a question or give me grocery items when you want to shop.';
+  }
+
+  if (isCapabilityQuestion(text)) {
+    if (/\b(brow\w*|tab|tabs|site|sites|supermarket|supermarkets|across|multiple|different)\b/i.test(text)) {
+      return "I can work in Chrome on supported supermarket sites like Ocado, Tesco, Sainsbury's, ASDA, Waitrose, Morrisons, and Aldi. I use the current supermarket tab or open the right one, then run shopping as a tool inside this chat.";
+    }
+
+    if (/\b(other|else|tasks?|anything else|outside|besides)\b/i.test(text)) {
+      return 'I can help with food and shopping-adjacent tasks: plan meals, convert recipes into shopping lists, scale quantities for guests, suggest swaps, compare options, and then run the approved grocery list as a shopping tool. I will keep non-shopping tasks as chat unless there is a clear grocery list to stage.';
+    }
+
+    return 'I can chat, plan meals, turn recipes into grocery lists, scale quantities, stage supermarket runs, show progress, and open your cart when shopping is done.';
+  }
+
+  if (/\b(shepherd'?s|shepards|shepherds)\s+pie\b/i.test(text)) {
+    const peopleMatch = text.match(/\b(?:for|serves?|serving)\s+(\d+)\b/i) || text.match(/\b(\d+)\s+(?:people|guests|servings)\b/i);
+    const people = peopleMatch ? Number(peopleMatch[1]) : 4;
+    const multiplier = Math.max(1, people / 4);
+    const minceGrams = Math.round(500 * multiplier / 50) * 50;
+    const potatoesKg = (1.2 * multiplier).toFixed(multiplier >= 2 ? 1 : 1);
+    const carrots = Math.max(2, Math.round(2 * multiplier));
+    const onions = Math.max(1, Math.round(1 * multiplier));
+
+    return `For shepherd's pie for ${people}, I would plan: ${minceGrams}g lamb mince, about ${potatoesKg}kg potatoes, ${carrots} carrots, ${onions} onions, frozen peas, tomato puree, beef or lamb stock, Worcestershire sauce, butter, milk, and mature cheddar if you want a cheesy mash top. Say "stage that list" and I can turn it into a shopping run.`;
+  }
+
+  if (/\b(i want to cook|cook|make|recipe|meal|dinner)\b/i.test(text)) {
+    return 'I can help plan that. Tell me the dish and number of people, and I will turn it into a practical grocery list with quantities. When you like the list, I can stage it as a shopping tool.';
+  }
+
+  if (/\b(meat|beef|chicken|pork|lamb|fish|salmon|steak)\b/i.test(text) && /\b(veggie|veggies|vegetable|vegetables|greens|salad)\b/i.test(text)) {
+    return 'Good brief. I can turn that into a shop-ready list like chicken thighs, lean mince, salmon fillets, broccoli, peppers, spinach, mushrooms, and salad leaves. Tell me quantities or say "make me a meat and veg list" and I will stage it before shopping.';
+  }
+
+  if (/\b(healthy|high protein|protein|low carb|meal prep|dinner|breakfast|lunch)\b/i.test(text)) {
+    return 'I can help plan that. Give me the number of meals or people, and I will suggest a grocery list. When you approve the list, I can run shopping as a tool.';
+  }
+
+  if (/^(thanks|thank you|cheers|nice|great|ok|okay)\b/i.test(normalized)) {
+    return 'You are welcome. Send a question, a preference, or specific grocery items when you want me to prepare a shopping run.';
+  }
+
+  return 'I can help with that. Tell me what you are trying to cook, what you like, or paste grocery items. I will keep chatting until there is a clear list to run as a shopping tool.';
+}
+
+async function classifyMessageWithOpenAI(text, context, openaiKey, llmConfig = {}) {
+  const response = await fetch(`${OPENAI_API_URL}/responses`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${openaiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: llmConfig.classifierModel || DEFAULT_CLASSIFIER_MODEL,
+      input: [
+        {
+          role: 'system',
+          content: [
+            'Classify a Sally Chrome extension user message.',
+            'Return JSON only using the schema.',
+            'Never classify capability, help, setup, or general questions as shopping_tool.',
+            'Use shopping_tool only when the user asks to buy specific grocery or supermarket items.',
+            'If grocery intent is vague or items are missing, use clarify.',
+          ].join(' '),
+        },
+        {
+          role: 'user',
+          content: JSON.stringify({
+            message: text,
+            context: {
+              selectedStore: context.store || null,
+              selectedMode: context.mode || null,
+              hasPostcode: !!context.deliveryPostcode,
+            },
+            availableTools: ['start_shopping'],
+          }),
+        },
+      ],
+      text: {
+        format: {
+          type: 'json_schema',
+          name: 'sally_intent_classification',
+          strict: true,
+          schema: getClassifierSchema(),
+        },
+      },
+      reasoning: { effort: 'none' },
+      max_output_tokens: 500,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`OpenAI classifier error: ${response.status}`);
+  }
+
+  const data = await response.json();
+  const outputText = extractResponseOutputText(data);
+
+  if (!outputText) {
+    throw new Error('Classifier returned no text output');
+  }
+
+  return JSON.parse(outputText);
+}
+
+function getClassifierSchema() {
+  return {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      intent: {
+        type: 'string',
+        enum: ['chat', 'shopping_tool', 'clarify', 'settings', 'compare_prices', 'status', 'stop'],
+      },
+      confidence: { type: 'number', minimum: 0, maximum: 1 },
+      reason: { type: 'string' },
+      toolName: { type: 'string', enum: ['none', 'start_shopping'] },
+      requiresConfirmation: { type: 'boolean' },
+      store: { type: ['string', 'null'] },
+      mode: { type: 'string', enum: ['local', 'cloud', 'unspecified'] },
+      items: {
+        type: 'array',
+        items: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            name: { type: 'string' },
+            quantity: { type: 'number' },
+          },
+          required: ['name', 'quantity'],
+        },
+      },
+      missingFields: {
+        type: 'array',
+        items: {
+          type: 'string',
+          enum: ['items', 'store', 'postcode', 'budget', 'auth', 'openai_key', 'supermarket_tab', 'confirmation'],
+        },
+      },
+      assistantHint: { type: 'string' },
+    },
+    required: [
+      'intent',
+      'confidence',
+      'reason',
+      'toolName',
+      'requiresConfirmation',
+      'store',
+      'mode',
+      'items',
+      'missingFields',
+      'assistantHint',
+    ],
+  };
+}
+
+function normalizeClassification(aiClassification, fallback, context) {
+  const normalized = {
+    ...fallback,
+    ...aiClassification,
+    store: aiClassification.store || fallback.store || context.store || null,
+    items: Array.isArray(aiClassification.items) ? aiClassification.items : [],
+    missingFields: Array.isArray(aiClassification.missingFields) ? aiClassification.missingFields : [],
+  };
+
+  if (normalized.intent === 'shopping_tool') {
+    const items = normalized.items
+      .map((item) => normalizeShoppingItem({ name: item.name, quantity: item.quantity || 1 }))
+      .filter((item) => item.name);
+
+    if (!items.length || normalized.toolName !== 'start_shopping') {
+      return {
+        ...fallback,
+        intent: 'clarify',
+        toolName: 'none',
+        items: [],
+        missingFields: ['items'],
+        assistantHint: 'What grocery items would you like me to shop for?',
+      };
+    }
+
+    return {
+      ...normalized,
+      intent: 'shopping_tool',
+      toolName: 'start_shopping',
+      items,
+      requiresConfirmation: true,
+    };
+  }
+
+  return {
+    ...normalized,
+    toolName: 'none',
+    items: [],
+    requiresConfirmation: false,
+  };
+}
+
+function parseClassifierItems(text) {
+  return String(text || '')
+    .replace(/\b(and|plus)\b/gi, ',')
+    .split(/\n|,/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => line.replace(/^(please\s+)?(buy|get|add|shop\s+for|order)\s+/i, '').trim())
+    .map((line) => normalizeShoppingItem(line))
+    .filter((item) => item.name);
+}
+
+function isCapabilityQuestion(text) {
+  const normalized = String(text || '').trim().toLowerCase();
+  return [
+    /^what\s+can\s+you\s+do\b/,
+    /^what\s+else\s+can\s+you\s+do\b/,
+    /^what\s+do\s+you\s+do\b/,
+    /^how\s+can\s+you\s+help\b/,
+    /^help\b/,
+    /^tell\s+me\s+about\s+yourself\b/,
+    /^who\s+are\s+you\b/,
+    /\b(can|could|do|will)\s+you\b.*\b(shop|shopping|browse|browser|browsers|tab|tabs|site|sites|supermarket|supermarkets)\b/,
+    /\b(across|between|multiple|different)\s+(browser|browsers|tab|tabs|site|sites|supermarket|supermarkets)\b/,
+    /\b(which|what)\s+(browser|browsers|site|sites|supermarket|supermarkets)\b.*\b(support|work|shop)\b/,
+  ].some((pattern) => pattern.test(normalized));
+}
+
+function looksLikeGroceryItem(text) {
+  const groceryPattern = [
+    'milk', 'bread', 'egg', 'eggs', 'banana', 'bananas', 'apple', 'apples',
+    'cheese', 'butter', 'yoghurt', 'yogurt', 'chicken', 'beef', 'fish',
+    'rice', 'pasta', 'cereal', 'coffee', 'tea', 'sugar', 'flour',
+    'tomato', 'tomatoes', 'potato', 'potatoes', 'onion', 'onions',
+    'carrot', 'carrots', 'lettuce', 'spinach', 'beans', 'peas',
+    'juice', 'water', 'crisps', 'biscuits', 'soap', 'detergent',
+    'toilet roll',
+  ].join('|');
+
+  return new RegExp(`\\b(${groceryPattern})\\b`, 'i').test(text);
+}
+
+function inferStoreFromText(text) {
+  const normalized = String(text || '').toLowerCase();
+  const storeAliases = {
+    tesco: ['tesco'],
+    sainsburys: ['sainsbury', 'sainsburys', "sainsbury's"],
+    asda: ['asda'],
+    ocado: ['ocado'],
+    waitrose: ['waitrose'],
+    morrisons: ['morrisons', 'morrison'],
+    aldi: ['aldi'],
+  };
+
+  for (const [store, aliases] of Object.entries(storeAliases)) {
+    if (aliases.some((alias) => normalized.includes(alias))) {
+      return store;
+    }
+  }
+
+  return '';
+}
+
+function extractResponseOutputText(data) {
+  if (typeof data.output_text === 'string') {
+    return data.output_text;
+  }
+
+  return (data.output || [])
+    .flatMap((output) => output.content || [])
+    .filter((content) => content.type === 'output_text' && content.text)
+    .map((content) => content.text)
+    .join('');
+}
+
 /**
  * Start a shopping task using LOCAL BROWSER CONTROL
  * 
@@ -497,6 +1626,38 @@ async function startShopping(data) {
     return { success: false, error: 'Items are required' };
   }
 
+  // Get the current active tab before consuming paid/free usage.
+  const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+
+  if (!activeTab) {
+    return { success: false, error: 'No active tab found. Please open a supermarket website first.' };
+  }
+
+  // Detect which store we're on from the URL
+  const detectedStore = detectStore(activeTab.url);
+  const storeResolution = resolveShoppingStore({
+    requestedStore: store,
+    detectedStore,
+  });
+  
+  console.log('[Sally] Store detection:', {
+    currentUrl: activeTab.url,
+    detectedStore,
+    providedStore: store,
+    resolvedStore: storeResolution.finalStore,
+    shouldNavigate: storeResolution.shouldNavigateToStore,
+  });
+  
+  const finalStore = storeResolution.finalStore;
+
+  if (!finalStore) {
+    return {
+      success: false,
+      requiresStoreSelection: true,
+      error: 'Choose where Sally should shop before starting. Pick a supermarket in Sally and try again.',
+    };
+  }
+
   const entitlement = await ensureAutomationAccess();
   if (!entitlement.allowed) {
     return {
@@ -507,41 +1668,25 @@ async function startShopping(data) {
       upgradeUrl: entitlement.upgradeUrl,
     };
   }
-  
-  // Get the current active tab
-  const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  
-  if (!activeTab) {
-    return { success: false, error: 'No active tab found. Please open a supermarket website first.' };
+
+  const authData = await chrome.storage.local.get(['authToken']);
+  const usageResult = await consumeShoppingUsage(authData.authToken);
+  if (!usageResult.success) {
+    const refreshedSubscription = await getSubscriptionStatus();
+    return {
+      success: false,
+      upgradeRequired: true,
+      error: usageResult.message,
+      plan: refreshedSubscription.plan,
+      upgradeUrl: usageResult.upgradeUrl || refreshedSubscription.plan?.upgradeUrl || UPGRADE_URL,
+    };
   }
   
-  // Detect which store we're on from the URL
-  const detectedStore = detectStore(activeTab.url);
-  
-  console.log('[Sally] Store detection:', {
-    currentUrl: activeTab.url,
-    detectedStore,
-    providedStore: store,
-  });
-  
-  // FIXED: Smart store handling
-  // 1. Always use the store from mobile app (if provided)
-  // 2. If no store provided, use detected store or default to Ocado
-  // 3. If user is on wrong store, navigate to correct one
-  
-  let finalStore = store || detectedStore || 'ocado'; // Use mobile app's choice, or detected, or default
-  
-  if (detectedStore && store && store !== detectedStore) {
-    // User wants a different store than they're on - navigate to it
-    console.log('[Sally] 🔄 Store mismatch - navigating from', detectedStore, 'to', store);
-    // Don't throw error - just navigate
-    finalStore = store;
+  if (storeResolution.hasStoreMismatch) {
+    console.log('[Sally] 🔄 Store mismatch - navigating from', detectedStore, 'to', finalStore);
   } else if (detectedStore) {
-    // Use the detected store (either matches user's selection or user had no preference)
-    finalStore = detectedStore;
     console.log('[Sally] ✅ Using detected store:', finalStore);
   } else {
-    // Not on any supported store - will need to navigate
     console.log('[Sally] 🔄 Not on a supported store, will navigate to:', finalStore);
   }
   
@@ -551,11 +1696,13 @@ async function startShopping(data) {
   const task = {
     id: crypto.randomUUID(),
     store: finalStore,
-    items: items.map(item => ({ 
-      name: item.name || item, 
-      quantity: item.quantity || 1,
-      status: 'pending' 
-    })),
+    items: items
+      .map((item) => normalizeShoppingItem(item))
+      .filter(Boolean)
+      .map((item) => ({
+        ...item,
+        status: 'pending',
+      })),
     deliveryPostcode,
     status: 'shopping',
     startedAt: new Date().toISOString(),
@@ -568,6 +1715,7 @@ async function startShopping(data) {
   };
   
   await chrome.storage.local.set({ currentTask: task });
+  await recordShoppingAnalytics('shopping_started', task);
   await groupTabForSally(activeTab.id, activeTab.windowId);
   
   console.log('[Sally] Starting LOCAL shopping in current tab for', finalStore, 'with', items.length, 'items');
@@ -584,9 +1732,8 @@ async function startShopping(data) {
   }
   
   try {
-    // FIXED: Only navigate to store if we're not already on a supported store
-    if (!detectedStore) {
-      console.log('[Sally] Not on a supported store, navigating to', finalStore);
+    if (storeResolution.shouldNavigateToStore) {
+      console.log('[Sally] Navigating to store landing page for', finalStore);
       const storeUrl = STORE_URLS[finalStore];
       await chrome.tabs.update(activeTab.id, { url: storeUrl });
       
@@ -601,7 +1748,13 @@ async function startShopping(data) {
     try {
       await chrome.scripting.executeScript({
         target: { tabId: activeTab.id },
-        files: ['content-scripts/base.js']
+        files: [
+          'shared/task-metrics.js',
+          'shared/item-parser.js',
+          'shared/product-fit.js',
+          'shared/product-language.js',
+          'content-scripts/base.js',
+        ]
       });
       console.log('[Sally] Content script injected successfully');
     } catch (e) {
@@ -655,19 +1808,7 @@ async function startShopping(data) {
  * Detect which store the user is on based on URL
  */
 function detectStore(url) {
-  if (!url) return null;
-  
-  const urlLower = url.toLowerCase();
-  
-  if (urlLower.includes('tesco.com')) return 'tesco';
-  if (urlLower.includes('sainsburys.co.uk')) return 'sainsburys';
-  if (urlLower.includes('asda.com')) return 'asda';
-  if (urlLower.includes('ocado.com')) return 'ocado';
-  if (urlLower.includes('waitrose.com')) return 'waitrose';
-  if (urlLower.includes('morrisons.com')) return 'morrisons';
-  if (urlLower.includes('aldi.co.uk')) return 'aldi';
-  
-  return null;
+  return detectStoreFromUrl(url);
 }
 
 /**
@@ -741,6 +1882,7 @@ async function stopShopping() {
   if (task) {
     task.status = 'stopped';
     task.stoppedAt = new Date().toISOString();
+    await sendTaskControlMessage(task, 'STOP_SHOPPING');
     
     // Save to history
     const historyData = await chrome.storage.local.get(['taskHistory']);
@@ -763,6 +1905,67 @@ async function stopShopping() {
   return { success: true };
 }
 
+async function pauseShopping() {
+  const data = await chrome.storage.local.get(['currentTask']);
+  const task = data.currentTask;
+
+  if (!task || ['complete', 'stopped', 'cancelled', 'error'].includes(task.status)) {
+    return { success: false, error: 'No active shopping task to pause.' };
+  }
+
+  task.status = 'paused';
+  task.pausedAt = new Date().toISOString();
+  await chrome.storage.local.set({ currentTask: task });
+  await sendTaskControlMessage(task, 'PAUSE_SHOPPING');
+  chrome.runtime.sendMessage({ type: 'TASK_UPDATED', task }).catch(() => {});
+  await recordShoppingAnalytics('shopping_paused', task);
+
+  return { success: true, task };
+}
+
+async function resumeShopping() {
+  const data = await chrome.storage.local.get(['currentTask']);
+  const task = data.currentTask;
+
+  if (!task || task.status !== 'paused') {
+    return { success: false, error: 'No paused shopping task to resume.' };
+  }
+
+  const now = new Date();
+  if (task.pausedAt) {
+    const pausedAt = new Date(task.pausedAt).getTime();
+    if (Number.isFinite(pausedAt)) {
+      task.totalPausedMs = (Number(task.totalPausedMs) || 0) + Math.max(0, now.getTime() - pausedAt);
+    }
+  }
+  delete task.pausedAt;
+  task.status = 'shopping';
+  await chrome.storage.local.set({ currentTask: task });
+  await sendTaskControlMessage(task, 'RESUME_SHOPPING');
+  chrome.runtime.sendMessage({ type: 'TASK_UPDATED', task }).catch(() => {});
+  await recordShoppingAnalytics('shopping_resumed', task);
+
+  return { success: true, task };
+}
+
+async function sendTaskControlMessage(task, type) {
+  const tabIds = new Set();
+  if (task?.tabId) tabIds.add(task.tabId);
+
+  try {
+    const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (activeTab?.id) tabIds.add(activeTab.id);
+  } catch (error) {
+    console.warn('[Sally] Could not resolve active tab for task control:', error.message);
+  }
+
+  await Promise.all([...tabIds].map((tabId) =>
+    chrome.tabs.sendMessage(tabId, { type }).catch((error) => {
+      console.warn(`[Sally] Could not send ${type} to tab ${tabId}:`, error.message);
+    })
+  ));
+}
+
 /**
  * Get current task status
  */
@@ -775,7 +1978,7 @@ async function getTaskStatus() {
  * Handle item added by content script
  */
 async function handleItemAdded(data) {
-  const { itemName, productName, price } = data;
+  const { itemName, productName, price, unitPrice } = data;
   console.log('[Sally] Item added:', itemName, '->', productName, '£' + price);
   
   const storage = await chrome.storage.local.get(['currentTask']);
@@ -793,6 +1996,9 @@ async function handleItemAdded(data) {
       item.status = 'added';
       item.productName = productName;
       item.price = price;
+      item.unitPrice = unitPrice || item.unitPrice || 0;
+      item.resolvedAt = new Date().toISOString();
+      item.elapsedSeconds = getElapsedSeconds(task.startedAt, item.resolvedAt);
     }
     
     await chrome.storage.local.set({ currentTask: task });
@@ -806,11 +2012,15 @@ async function handleItemAdded(data) {
         requested_name: itemName,
         found_name: productName,
         price: price,
+        unit_price: unitPrice || 0,
         quantity: item?.quantity || 1,
         added: true,
         confidence: 1.0,
+        elapsed_seconds: item?.elapsedSeconds || 0,
       });
     }
+
+    await recordShoppingAnalytics('item_added', task, { itemName, productName, price });
     
     // Notify popup
     chrome.runtime.sendMessage({ type: 'TASK_UPDATED', task }).catch(() => {});
@@ -871,6 +2081,8 @@ async function handleItemFailed(data) {
     if (item) {
       item.status = 'failed';
       item.failReason = reason;
+      item.resolvedAt = new Date().toISOString();
+      item.elapsedSeconds = getElapsedSeconds(task.startedAt, item.resolvedAt);
     }
     
     await chrome.storage.local.set({ currentTask: task });
@@ -879,6 +2091,8 @@ async function handleItemFailed(data) {
     if (task.sessionId) {
       await sendProgressToAPI(task);
     }
+
+    await recordShoppingAnalytics('item_failed', task, { itemName, reason });
     
     // Notify popup
     chrome.runtime.sendMessage({ type: 'TASK_UPDATED', task }).catch(() => {});
@@ -898,23 +2112,88 @@ async function handleItemFailed(data) {
  * Build progress object from task
  */
 function buildProgressObject(task) {
-  const totalItems = task.items.length;
-  const itemsAdded = task.itemsAdded || 0;
-  const itemsFailed = task.itemsFailed || 0;
-  const percentage = Math.round(((itemsAdded + itemsFailed) / totalItems) * 100);
+  const metrics = computeTaskMetrics(task);
+  const percentage = getProgressPercentage(metrics);
   
   return {
-    itemsAdded,
-    itemsFailed,
-    totalItems,
+    itemsAdded: metrics.addedItems,
+    itemsFailed: metrics.failedItems,
+    totalItems: metrics.totalItems,
+    itemsProcessed: metrics.processedItems,
+    itemsRemaining: metrics.remainingItems,
+    totalUnits: metrics.totalUnits,
+    unitsAdded: metrics.addedUnits,
+    unitsFailed: metrics.failedUnits,
+    unitsRemaining: metrics.remainingUnits,
     percentage,
     items: task.items.map(item => ({
       name: item.name,
       quantity: item.quantity,
       status: item.status,
-      price: item.price
+      price: item.price,
+      resolvedAt: item.resolvedAt,
+      elapsedSeconds: item.elapsedSeconds,
     }))
   };
+}
+
+function getElapsedSeconds(startedAt, endedAt = new Date().toISOString()) {
+  if (!startedAt) return 0;
+  const start = new Date(startedAt).getTime();
+  const end = new Date(endedAt).getTime();
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return 0;
+  return Math.max(0, Math.round((end - start) / 1000));
+}
+
+async function recordShoppingAnalytics(eventType, task, details = {}) {
+  if (!task) return;
+
+  const metrics = computeTaskMetrics(task);
+  const totalSpent = (task.items || []).reduce((sum, item) => {
+    return sum + (item.status === 'added' && Number(item.price) ? Number(item.price) : 0);
+  }, 0);
+  const payload = {
+    eventType,
+    taskId: task.id,
+    store: task.store,
+    mode: task.mode || 'local',
+    sessionId: task.sessionId || null,
+    timestamp: new Date().toISOString(),
+    startedAt: task.startedAt || null,
+    completedAt: task.completedAt || null,
+    elapsedSeconds: getElapsedSeconds(task.startedAt, task.completedAt),
+    totalSpent,
+    metrics: {
+      totalItems: metrics.totalItems,
+      addedItems: metrics.addedItems,
+      failedItems: metrics.failedItems,
+      remainingItems: metrics.remainingItems,
+      totalUnits: metrics.totalUnits,
+      addedUnits: metrics.addedUnits,
+      failedUnits: metrics.failedUnits,
+    },
+    details,
+  };
+
+  try {
+    const data = await chrome.storage.local.get(['shoppingAnalytics', 'authToken']);
+    const analytics = Array.isArray(data.shoppingAnalytics) ? data.shoppingAnalytics : [];
+    analytics.unshift(payload);
+    await chrome.storage.local.set({ shoppingAnalytics: analytics.slice(0, 250) });
+
+    fetch(`${SALLY_API_URL}/api/extension/shopping-analytics`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(data.authToken ? { Authorization: `Bearer ${data.authToken}` } : {}),
+      },
+      body: JSON.stringify(payload),
+    }).catch((error) => {
+      console.warn('[Sally] Shopping analytics backend unavailable:', error.message);
+    });
+  } catch (error) {
+    console.warn('[Sally] Failed to record shopping analytics:', error.message);
+  }
 }
 
 /**
@@ -1221,9 +2500,8 @@ async function initializeWebSocket(sessionId) {
   
   console.log('[Sally] Initializing WebSocket for session:', sessionId);
   
-  // Import WebSocket client
   if (typeof ShoppingWebSocketClient === 'undefined') {
-    await import('./websocket-client.js');
+    throw new Error('WebSocket client unavailable');
   }
   
   wsClient = new ShoppingWebSocketClient(sessionId);
@@ -1373,6 +2651,7 @@ async function handleShoppingComplete() {
     }
     
     await chrome.storage.local.set({ currentTask: task, sallyStats: stats });
+    await recordShoppingAnalytics('shopping_completed', task, { itemsAdded, totalPrice: spent });
     
     // Save to history
     const historyData = await chrome.storage.local.get(['taskHistory']);

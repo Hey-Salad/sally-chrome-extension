@@ -7,6 +7,7 @@
   <link rel="stylesheet" href="popup.css">
 </head>
 <body>
+  <div id="panel-notice" class="panel-notice hidden" role="status" aria-live="polite"></div>
   <div class="container">
     <!-- Header -->
     <header class="header">
@@ -64,11 +65,56 @@
     </section>
 
     <!-- Main Section (shown when logged in) -->
-    <section id="main-section" class="section hidden">
+    <section id="main-section" class="section chat-first hidden">
       <!-- User Info -->
       <div class="user-bar">
-        <span id="user-email" class="user-email"></span>
-        <button id="logout-btn" class="btn btn-text">Sign out</button>
+        <div class="user-identity">
+          <span id="user-avatar" class="user-avatar" aria-hidden="true"></span>
+          <span id="user-email" class="user-email"></span>
+        </div>
+        <div class="user-actions">
+          <span id="user-plan-badge" class="user-plan-badge plan-free">Free</span>
+          <button id="logout-btn" class="btn btn-text logout-btn" type="button" aria-label="Sign out" title="Sign out">Sign out</button>
+        </div>
+      </div>
+
+      <div class="card activity-card chat-card" aria-live="polite">
+        <div class="activity-header chat-header">
+          <div>
+            <p class="activity-eyebrow">Sally Threads</p>
+            <h3>What can we get done?</h3>
+          </div>
+          <button id="clear-activity-btn" class="btn btn-text" type="button">Clear</button>
+        </div>
+        <div id="activity-feed" class="activity-feed">
+          <p class="activity-empty">Message Sally or paste a shopping list. Shopping runs as a tool when you ask for groceries.</p>
+        </div>
+        <form id="chat-form" class="chat-form">
+          <button id="chat-plus-btn" class="chat-plus-btn" type="button" aria-label="Show quick actions">
+            <span aria-hidden="true">+</span>
+          </button>
+          <textarea
+            id="chat-input"
+            rows="3"
+            placeholder="Message Sally or paste a list..."
+            aria-label="Message Sally"
+          ></textarea>
+          <button id="chat-voice-btn" class="chat-voice-btn" type="button" aria-label="Start voice">
+            <span aria-hidden="true"></span>
+          </button>
+          <button id="chat-send-btn" class="chat-send-btn" type="submit" aria-label="Send message">
+            <span>Send</span>
+          </button>
+        </form>
+        <div class="chat-suggestions hidden" aria-label="Quick actions">
+          <button type="button" class="chat-suggestion" data-chat-action="attach-mobile">Attach mobile app</button>
+          <button type="button" class="chat-suggestion mobile-attach-option hidden" data-chat-action="attach-mobile-ios">iOS</button>
+          <button type="button" class="chat-suggestion mobile-attach-option hidden" data-chat-action="attach-mobile-android">Android soon</button>
+          <button type="button" class="chat-suggestion" data-chat-prompt="2x milk&#10;bread&#10;eggs">Sample list</button>
+          <button type="button" class="chat-suggestion" data-chat-prompt="What should I buy for quick healthy breakfasts?">Ideas</button>
+          <button type="button" class="chat-suggestion" data-chat-prompt="status">Status</button>
+          <button type="button" class="chat-suggestion" data-chat-prompt="new list">New list</button>
+        </div>
       </div>
 
       <div id="plan-card" class="card plan-card">
@@ -80,10 +126,10 @@
           <span id="plan-pill" class="plan-pill plan-free">Free</span>
         </div>
         <p id="plan-description" class="plan-description">
-          Sign in with Sally Premium or Pro to unlock autonomous shopping in the extension.
+          Free includes 2 autonomous shops. Upgrade to HeySalad Pro or Max for ongoing shopping.
         </p>
         <button id="upgrade-btn" class="btn btn-secondary hidden">
-          <span>Upgrade in Sally</span>
+          <span>Upgrade in HeySalad</span>
         </button>
       </div>
 
@@ -107,7 +153,7 @@
 
       <!-- Shopping Task Form -->
       <div id="task-form" class="card">
-        <h3>What shall I get you?</h3>
+        <h3>Shopping tool</h3>
         
         <div class="mobile-link-banner">
           <span>📱 Have Sally Mobile?</span>
@@ -279,7 +325,7 @@
     </section>
 
     <footer class="footer">
-      <p>Sally by HeySalad® v1.0</p>
+      <p>Sally by HeySalad® v1.0.28</p>
       <div class="footer-links">
         <a href="https://chat.heysalad.app" target="_blank">Chat</a>
         <a href="https://heysalad.app/help" target="_blank">Help</a>
@@ -290,6 +336,8 @@
   <script src="jsqr.min.js"></script>
   <script src="qrcode.min.js"></script>
   <script src="qr-scanner.js"></script>
+  <script src="../shared/task-metrics.js"></script>
+  <script src="../shared/item-parser.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>

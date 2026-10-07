@@ -1,6 +1,6 @@
-document.addEventListener('DOMContentLoaded', () => {
-  document.documentElement.dataset.surface = 'sidepanel';
+document.documentElement.dataset.surface = 'sidepanel';
 
+document.addEventListener('DOMContentLoaded', () => {
   const helpButton = document.getElementById('open-help-link');
   if (helpButton) {
     helpButton.addEventListener('click', () => {

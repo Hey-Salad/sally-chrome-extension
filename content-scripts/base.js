@@ -20,9 +20,183 @@
   let currentTask = null;
   let isProcessing = false;
   let overlayElement = null;
+
+  function scheduleProcessingCycle(delayMs = 0) {
+    setTimeout(() => {
+      if (currentTask?.status === 'paused') {
+        console.log('[Sally] Shopping task is paused; skipping processing cycle');
+        return;
+      }
+      runProcessingCycle();
+    }, delayMs);
+  }
+
+  async function runProcessingCycle() {
+    try {
+      await checkAndProcess();
+    } catch (error) {
+      console.error('[Sally] Processing cycle crashed:', error);
+      isProcessing = false;
+
+      if (!currentTask) {
+        return;
+      }
+
+      const activeItem = currentTask.items.find((item) => item.status === 'searching') ||
+        currentTask.items.find((item) => item.status === 'pending');
+
+      if (activeItem) {
+        reportItemFailed(activeItem, `Unexpected error: ${error.message}`);
+        await sleep(1000);
+        moveToNextItem();
+        return;
+      }
+
+      updateOverlay();
+      showToast('Sally hit an unexpected error', 'error');
+    }
+  }
   
   // Backend AI routing
   const SHOPPING_AGENT_URL = 'https://shopping-agent.heysalad-o.workers.dev';
+  const taskMetricsApi = globalThis.HeySaladTaskMetrics || {};
+  const itemParserApi = globalThis.HeySaladItemParser || {};
+  const productFitApi = globalThis.HeySaladProductFit || {};
+  const productLanguageApi = globalThis.HeySaladProductLanguage || {};
+  const computeTaskMetrics = taskMetricsApi.computeTaskMetrics || ((task) => {
+    const items = Array.isArray(task?.items) ? task.items : [];
+    const addedItems = items.filter((item) => item.status === 'added').length;
+    const failedItems = items.filter((item) => item.status === 'failed').length;
+
+    return {
+      totalItems: items.length,
+      addedItems,
+      failedItems,
+      processedItems: addedItems + failedItems,
+      remainingItems: Math.max(items.length - (addedItems + failedItems), 0),
+      totalUnits: items.reduce((sum, item) => sum + (Number(item.quantity) || 1), 0),
+      addedUnits: items
+        .filter((item) => item.status === 'added')
+        .reduce((sum, item) => sum + (Number(item.quantity) || 1), 0),
+      failedUnits: items
+        .filter((item) => item.status === 'failed')
+        .reduce((sum, item) => sum + (Number(item.quantity) || 1), 0),
+      remainingUnits: items
+        .filter((item) => item.status !== 'added' && item.status !== 'failed')
+        .reduce((sum, item) => sum + (Number(item.quantity) || 1), 0),
+      hasMultiQuantity: items.reduce((sum, item) => sum + (Number(item.quantity) || 1), 0) > items.length,
+    };
+  });
+  const formatProgressSummary = taskMetricsApi.formatProgressSummary || ((task) => {
+    const metrics = computeTaskMetrics(task);
+    const unitSummary = metrics.hasMultiQuantity ? ` (${metrics.addedUnits}/${metrics.totalUnits} units)` : '';
+    const parts = [
+      `Got ${metrics.addedItems}/${metrics.totalItems} items${unitSummary}`,
+      `${metrics.remainingItems} left`,
+    ];
+
+    if (metrics.failedItems > 0) {
+      parts.push(`${metrics.failedItems} unavailable`);
+    }
+
+    return parts.join(' • ');
+  });
+  const getProgressPercentage = taskMetricsApi.getProgressPercentage || ((task) => {
+    const metrics = computeTaskMetrics(task);
+    return metrics.totalItems > 0 ? Math.round((metrics.processedItems / metrics.totalItems) * 100) : 0;
+  });
+  const getItemSearchQuery = itemParserApi.getItemSearchQuery || ((item) => {
+    if (typeof item === 'string') {
+      return String(item || '').trim();
+    }
+
+    return String(item?.searchQuery || item?.name || item?.rawText || '').trim();
+  });
+  const extractProductAttributes = productFitApi.extractProductAttributes || ((name, price = 0) => ({
+    name,
+    normalizedName: String(name || '').toLowerCase(),
+    price: Number(price) || 0,
+    measureValue: null,
+    measureType: null,
+    measureUnit: null,
+    packageCount: null,
+    packageUnit: null,
+  }));
+  const scoreProductFit = productFitApi.scoreProductFit || ((requestedItem, product) => {
+    const requestedQuery = normalizeSemanticText(getItemSearchQuery(requestedItem));
+    const productName = normalizeSemanticText(product?.name || '');
+    if (!requestedQuery || !productName) {
+      return 0;
+    }
+
+    if (productName.includes(requestedQuery)) {
+      return 0.75;
+    }
+
+    const queryWords = requestedQuery.split(/\s+/).filter((word) => word.length > 2);
+    if (queryWords.length === 0) {
+      return 0;
+    }
+
+    const matchedWords = queryWords.filter((word) => productName.includes(word));
+    return matchedWords.length / queryWords.length;
+  });
+  const chooseBestProductByFit = productFitApi.chooseBestProductByFit || ((requestedItem, products, excludedIndices = []) => {
+    let bestIndex = -1;
+    let bestScore = -1;
+    products.forEach((product, index) => {
+      if (excludedIndices.includes(index)) {
+        return;
+      }
+
+      const score = scoreProductFit(requestedItem, product, products);
+      if (score > bestScore) {
+        bestScore = score;
+        bestIndex = index;
+      }
+    });
+
+    return {
+      success: bestIndex >= 0 && bestScore > 0.3,
+      bestIndex,
+      confidence: bestScore >= 0 ? bestScore : 0,
+    };
+  });
+  const normalizeSemanticText = productLanguageApi.normalizeSemanticText || ((value) => String(value || '').toLowerCase().trim());
+  const getPreferredSearchQuery = productLanguageApi.getPreferredSearchQuery || ((value) => String(value || '').trim());
+  const getSearchQueryVariants = productLanguageApi.getSearchQueryVariants || ((value) => {
+    const preferred = getPreferredSearchQuery(value);
+    return preferred ? [preferred] : [];
+  });
+  const getObviousMismatchReason = productLanguageApi.getObviousMismatchReason || ((query, productName) => {
+    const normalizedQuery = normalizeSemanticText(query);
+    const normalizedProduct = normalizeSemanticText(productName);
+    const rules = [
+      { item: 'apple', wrong: ['juice', 'cider', 'sauce'] },
+      { item: 'tomato', wrong: ['sauce', 'paste', 'puree', 'soup', 'ketchup'] },
+      { item: 'chicken', wrong: ['stock', 'soup', 'gravy', 'nugget'] },
+      { item: 'orange', wrong: ['juice', 'marmalade'] },
+      { item: 'toilet tissue', wrong: ['facial tissue', 'kitchen roll'] },
+      { item: 'kitchen roll', wrong: ['toilet tissue', 'facial tissue'] },
+      { item: 'eggs', wrong: ['mini egg', 'creme egg', 'easter egg', 'custard', 'tart', 'chocolate'] },
+    ];
+
+    for (const rule of rules) {
+      if (!normalizedQuery.includes(rule.item)) {
+        continue;
+      }
+
+      const mismatch = rule.wrong.find((term) => {
+        return normalizedProduct.includes(term) && !normalizedQuery.includes(term);
+      });
+
+      if (mismatch) {
+        return `Rejected ${productName} because it looks like ${mismatch}, not ${query}.`;
+      }
+    }
+
+    return null;
+  });
   
   async function matchProductWithAI(query, products) {
     try {
@@ -74,59 +248,57 @@
   /**
    * Basic product matching fallback
    */
-  function basicProductMatch(query, products) {
-    console.log('[Sally] Using basic product matching for:', query);
-    
-    const queryLower = query.toLowerCase().trim();
-    let bestIndex = 0;
-    let bestScore = 0;
-    
-    products.forEach((product, index) => {
-      const productLower = product.name.toLowerCase();
-      let score = 0;
-      
-      // Exact match gets highest score
-      if (productLower.includes(queryLower)) {
-        score = 0.9;
-      } else {
-        // Word matching
-        const queryWords = queryLower.split(/\s+/).filter(w => w.length > 2);
-        const matchedWords = queryWords.filter(word => productLower.includes(word));
-        score = matchedWords.length / queryWords.length;
-      }
-      
-      // Avoid processed versions of fresh items
-      const criticalMismatches = [
-        { item: 'apple', wrong: ['juice', 'cider', 'sauce'] },
-        { item: 'tomato', wrong: ['sauce', 'paste', 'puree', 'soup'] },
-        { item: 'chicken', wrong: ['stock', 'soup', 'gravy'] },
-        { item: 'carrot', wrong: ['juice', 'soup'] },
-        { item: 'orange', wrong: ['juice', 'marmalade'] }
-      ];
-      
-      for (const rule of criticalMismatches) {
-        if (queryLower.includes(rule.item)) {
-          for (const wrongWord of rule.wrong) {
-            if (productLower.includes(wrongWord) && !queryLower.includes(wrongWord)) {
-              score = 0.1; // Very low score for wrong matches
-              break;
-            }
-          }
-        }
-      }
-      
-      if (score > bestScore) {
-        bestScore = score;
-        bestIndex = index;
-      }
-    });
-    
+  function basicProductMatch(requestedItem, products, excludedIndices = []) {
+    const requestedQuery = getItemSearchQuery(requestedItem);
+    console.log('[Sally] Using basic product matching for:', requestedQuery);
+
+    const fitResult = chooseBestProductByFit(requestedItem, products, excludedIndices);
+    if (!fitResult.success) {
+      return {
+        success: false,
+        bestIndex: fitResult.bestIndex >= 0 ? fitResult.bestIndex : 0,
+        confidence: fitResult.confidence,
+        reason: 'No strong local fit found',
+      };
+    }
+
+    const selectedProduct = products[fitResult.bestIndex];
+    const mismatchReason = getObviousMismatchReason(requestedQuery, selectedProduct?.name || '');
+    if (mismatchReason) {
+      return {
+        success: false,
+        bestIndex: fitResult.bestIndex,
+        confidence: Math.min(fitResult.confidence, 0.2),
+        reason: mismatchReason,
+      };
+    }
+
     return {
-      success: bestScore > 0.3,
-      bestIndex,
-      confidence: bestScore,
-      reason: bestScore > 0.7 ? 'Good match found' : 'Weak match - please verify'
+      success: true,
+      bestIndex: fitResult.bestIndex,
+      confidence: fitResult.confidence,
+      reason: fitResult.confidence > 0.7 ? 'Good fit found' : 'Best local fit found',
     };
+  }
+
+  function getLocalFallbackMatch(requestedItem, products, rejectedIndices = []) {
+    const fallback = basicProductMatch(requestedItem, products, rejectedIndices);
+
+    if (!fallback.success) {
+      return null;
+    }
+
+    const candidate = products[fallback.bestIndex];
+    if (!candidate) {
+      return null;
+    }
+
+    const mismatchReason = getObviousMismatchReason(getItemSearchQuery(requestedItem), candidate.name);
+    if (mismatchReason) {
+      return null;
+    }
+
+    return fallback;
   }
   
   async function validateProductMatch(requestedItem, selectedProduct) {
@@ -137,36 +309,27 @@
    * Basic validation fallback (rule-based)
    */
   function basicValidation(requestedItem, selectedProductName) {
-    const requested = requestedItem.toLowerCase().trim();
-    const selected = selectedProductName.toLowerCase();
+    const requested = normalizeSemanticText(requestedItem);
+    const selected = normalizeSemanticText(selectedProductName);
     
-    // Critical mismatches to prevent
-    const criticalMismatches = [
-      { item: 'apple', wrong: ['juice', 'cider', 'sauce'] },
-      { item: 'tomato', wrong: ['sauce', 'paste', 'puree', 'soup', 'ketchup'] },
-      { item: 'chicken', wrong: ['stock', 'soup', 'gravy', 'sauce'] },
-      { item: 'beef', wrong: ['stock', 'soup', 'gravy'] },
-      { item: 'carrot', wrong: ['juice', 'soup'] },
-      { item: 'orange', wrong: ['juice', 'marmalade'] },
-      { item: 'lemon', wrong: ['juice', 'curd'] },
-      { item: 'potato', wrong: ['chip', 'crisp', 'waffle'] },
-      { item: 'onion', wrong: ['ring', 'soup', 'powder'] },
-      { item: 'garlic', wrong: ['powder', 'paste', 'bread'] }
-    ];
-    
-    // Check for critical mismatches
-    for (const rule of criticalMismatches) {
-      if (requested.includes(rule.item)) {
-        for (const wrongWord of rule.wrong) {
-          if (selected.includes(wrongWord) && !requested.includes(wrongWord)) {
-            return {
-              valid: false,
-              confidence: 0.95,
-              reason: `"${selectedProductName}" is a processed product, not fresh ${requestedItem}`
-            };
-          }
-        }
-      }
+    const mismatchReason = getObviousMismatchReason(requestedItem, selectedProductName);
+    if (mismatchReason) {
+      return {
+        valid: false,
+        confidence: 0.95,
+        reason: mismatchReason,
+      };
+    }
+
+    const fitScore = scoreProductFit(requestedItem, extractProductAttributes(selectedProductName, 0), [
+      extractProductAttributes(selectedProductName, 0),
+    ]);
+    if (fitScore < 0.3) {
+      return {
+        valid: false,
+        confidence: Math.max(fitScore, 0.1),
+        reason: `"${selectedProductName}" is a weak size or value fit for "${getItemSearchQuery(requestedItem) || requestedItem}"`,
+      };
     }
     
     // Check if the requested item appears in the selected product name
@@ -209,6 +372,12 @@
       isProcessing = false;
       chrome.storage.local.set({ currentTask: null });
       sendResponse({ success: true });
+    } else if (message.type === 'PAUSE_SHOPPING') {
+      handlePauseShopping();
+      sendResponse({ success: true });
+    } else if (message.type === 'RESUME_SHOPPING') {
+      handleResumeShopping();
+      sendResponse({ success: true });
     } else if (message.type === 'PING') {
       sendResponse({ success: true, ready: true });
     }
@@ -223,11 +392,11 @@
     console.log('[Sally] 🚀 AUTO-STARTING shopping task:', task);
     
     currentTask = task;
-    isProcessing = true;
+    isProcessing = false;
     
     // Show overlay immediately
     showOverlay();
-    showToast('🤖 Sally is taking control...', 'info');
+    showToast('Sally is taking control...', 'info', 'bot');
     
     // Accept cookies and handle initial setup
     await acceptCookies();
@@ -249,9 +418,7 @@
     await handleStorePopupsAndLimits();
     
     // Start shopping immediately
-    setTimeout(() => {
-      checkAndProcess();
-    }, 2000);
+    scheduleProcessingCycle(2000);
   }
 
   /**
@@ -410,7 +577,7 @@
     });
     
     chrome.storage.local.set({ currentTask });
-    showToast('📋 Prioritizing essential items due to store limits', 'info');
+    showToast('Prioritizing essential items due to store limits', 'info', 'check');
   }
 
   /**
@@ -503,7 +670,7 @@
           await performAutoLogin('tesco', credentials);
         } else {
           console.log('[Sally] ⚠️ No stored Tesco credentials, continuing as guest');
-          showToast('⚠️ Tesco login required - continuing as guest', 'warning');
+      showToast('Tesco login required - continuing as guest', 'warning', 'circle');
         }
       }
     }
@@ -565,6 +732,58 @@
   async function performAutoLogin(store, credentials) {
     console.log('[Sally] 🔐 Auto-login for', store, 'not yet implemented');
     // TODO: Implement automatic login flow
+  }
+
+  function getStoreAuthBlocker() {
+    const host = window.location.hostname.toLowerCase();
+    const href = window.location.href.toLowerCase();
+    const pageText = (document.body?.innerText || '').toLowerCase();
+    const hasPasswordField = Boolean(document.querySelector('input[type="password"]'));
+
+    if (host.includes('tesco.com')) {
+      const onTescoAuthPage = href.includes('/account/auth/');
+      const tescoLoginPrompt = hasPasswordField && pageText.includes('sign in to your account');
+      if (onTescoAuthPage || tescoLoginPrompt) {
+        return {
+          store: 'tesco',
+          message: 'Tesco sign-in required before Sally can add items to the basket.',
+        };
+      }
+    }
+
+    if (hasPasswordField && pageText.includes('sign in')) {
+      return {
+        store: 'generic',
+        message: 'Supermarket sign-in required before Sally can continue shopping.',
+      };
+    }
+
+    return null;
+  }
+
+  function blockTaskForAuth(message) {
+    if (!currentTask || currentTask.status === 'blocked') {
+      return;
+    }
+
+    console.log('[Sally] Blocking shopping task due to auth requirement:', message);
+    currentTask.status = 'blocked';
+
+    currentTask.items.forEach((item) => {
+      if (item.status === 'pending' || item.status === 'searching') {
+        item.status = 'failed';
+        item.failReason = message;
+        chrome.runtime.sendMessage({
+          type: 'ITEM_FAILED',
+          data: { itemName: item.name, reason: message }
+        });
+      }
+    });
+
+    chrome.storage.local.set({ currentTask });
+    updateOverlay();
+    showToast(message, 'error');
+    chrome.runtime.sendMessage({ type: 'SHOPPING_COMPLETE' });
   }
   
   /**
@@ -632,6 +851,13 @@
     if (data.currentTask && data.currentTask.status !== 'complete' && data.currentTask.status !== 'stopped' && data.currentTask.status !== 'checkout') {
       currentTask = data.currentTask;
       console.log('[Sally] Resuming task from storage, items:', currentTask.items.map(i => `${i.name}:${i.status}`).join(', '));
+
+      if (currentTask.status === 'paused') {
+        console.log('[Sally] Stored task is paused; rendering overlay without processing');
+        showOverlay();
+        updateOverlay();
+        return;
+      }
       
       // Check if we just navigated (within last 10 seconds for slow sites like Ocado)
       const now = Date.now();
@@ -674,9 +900,7 @@
       
       console.log('[Sally] Waiting', delay, 'ms for page to render on', host);
       
-      setTimeout(() => {
-        checkAndProcess();
-      }, delay);
+      scheduleProcessingCycle(delay);
     }
   });
   
@@ -684,13 +908,37 @@
    * Check current page and process accordingly
    */
   async function checkAndProcess() {
-    if (!currentTask || isProcessing) return;
+    if (!currentTask) {
+      return;
+    }
+
+    if (currentTask.status === 'blocked') {
+      return;
+    }
+
+    if (currentTask.status === 'paused') {
+      console.log('[Sally] Shopping task paused');
+      showOverlay();
+      updateOverlay();
+      return;
+    }
+
+    if (isProcessing) {
+      console.log('[Sally] Processing already in progress, waiting for current step to finish');
+      return;
+    }
     
     // Show overlay when we have a task
     showOverlay();
     
     const currentUrl = window.location.href;
     console.log('[Sally] Checking page:', currentUrl);
+
+    const authBlocker = getStoreAuthBlocker();
+    if (authBlocker) {
+      blockTaskForAuth(authBlocker.message);
+      return;
+    }
     
     // First check if there's an item already being searched
     const searchingItem = currentTask.items.find(i => i.status === 'searching');
@@ -709,7 +957,7 @@
     
     if (!pendingItem && !searchingItem) {
       console.log('[Sally] No pending items, shopping complete');
-      showToast('Shopping complete! 🎉', 'success');
+      showToast('Shopping complete.', 'success', 'check');
       chrome.runtime.sendMessage({ type: 'SHOPPING_COMPLETE' });
       setTimeout(hideOverlay, 3000);
       return;
@@ -721,6 +969,7 @@
     // Mark item as searching if not already
     if (itemToProcess.status !== 'searching') {
       itemToProcess.status = 'searching';
+      itemToProcess.searchStartedAt = new Date().toISOString();
       chrome.storage.local.set({ currentTask });
     }
     updateOverlay();
@@ -733,8 +982,8 @@
       isProcessing = false;
     } else if (isHomePage()) {
       // Navigate to search
-      console.log('[Sally] Not on search page, searching for:', itemToProcess.name);
-      navigateToSearch(itemToProcess.name);
+      console.log('[Sally] Not on search page, searching for:', getItemSearchQuery(itemToProcess));
+      navigateToSearch(itemToProcess);
     }
   }
   
@@ -772,22 +1021,24 @@
   function navigateToSearch(query) {
     const host = window.location.hostname;
     const currentUrl = window.location.href;
+    const rawQuery = typeof query === 'string' ? query : getItemSearchQuery(query);
+    const searchQuery = getSearchQueryForAttempt(query);
     let searchUrl;
     
     if (host.includes('tesco.com')) {
-      searchUrl = `https://www.tesco.com/groceries/en-GB/search?query=${encodeURIComponent(query)}`;
+      searchUrl = `https://www.tesco.com/groceries/en-GB/search?query=${encodeURIComponent(searchQuery)}`;
     } else if (host.includes('sainsburys.co.uk')) {
-      searchUrl = `https://www.sainsburys.co.uk/gol-ui/SearchResults/${encodeURIComponent(query)}`;
+      searchUrl = `https://www.sainsburys.co.uk/gol-ui/SearchResults/${encodeURIComponent(searchQuery)}`;
     } else if (host.includes('asda.com')) {
-      searchUrl = `https://groceries.asda.com/search/${encodeURIComponent(query)}`;
+      searchUrl = `https://groceries.asda.com/search/${encodeURIComponent(searchQuery)}`;
     } else if (host.includes('ocado.com')) {
-      searchUrl = `https://www.ocado.com/search?q=${encodeURIComponent(query)}`;
+      searchUrl = `https://www.ocado.com/search?q=${encodeURIComponent(searchQuery)}`;
     } else if (host.includes('waitrose.com')) {
-      searchUrl = `https://www.waitrose.com/ecom/shop/search?searchTerm=${encodeURIComponent(query)}`;
+      searchUrl = `https://www.waitrose.com/ecom/shop/search?searchTerm=${encodeURIComponent(searchQuery)}`;
     } else if (host.includes('morrisons.com')) {
-      searchUrl = `https://groceries.morrisons.com/search?q=${encodeURIComponent(query)}`;
+      searchUrl = `https://groceries.morrisons.com/search?q=${encodeURIComponent(searchQuery)}`;
     } else if (host.includes('aldi.co.uk')) {
-      searchUrl = `https://www.aldi.co.uk/search?q=${encodeURIComponent(query)}`;
+      searchUrl = `https://www.aldi.co.uk/search?q=${encodeURIComponent(searchQuery)}`;
     }
     
     if (searchUrl) {
@@ -809,31 +1060,64 @@
                               urlObj.searchParams.get('searchTerm') || 
                               currentUrl.split('/SearchResults/')[1]?.split('?')[0] ||
                               currentUrl.split('/search/')[1]?.split('?')[0] || '';
-          currentSearchTerm = decodeURIComponent(currentSearchTerm).toLowerCase();
+          currentSearchTerm = normalizeSemanticText(decodeURIComponent(currentSearchTerm));
         } catch (e) {
           console.log('[Sally] Error parsing URL:', e);
         }
         
-        const targetSearch = query.toLowerCase();
+        const targetSearch = normalizeSemanticText(searchQuery);
         
-        // If we're already searching for something similar, don't navigate again
-        if (currentSearchTerm && (
-            currentSearchTerm.includes(targetSearch.substring(0, 4)) ||
-            targetSearch.includes(currentSearchTerm.substring(0, 4))
-        )) {
-          console.log('[Sally] Already on search page for:', query, '(current:', currentSearchTerm, ') - processing results instead');
+        // Only skip when the URL already has the exact query. Fallback searches
+        // often intentionally overlap, e.g. "long grain rice 500g" -> "long grain rice".
+        if (currentSearchTerm && currentSearchTerm === targetSearch) {
+          console.log('[Sally] Already on search page for:', searchQuery, '(current:', currentSearchTerm, ') - processing results instead');
           // Process results directly instead of navigating
-          setTimeout(() => checkAndProcess(), 1000);
+          scheduleProcessingCycle(1000);
           return;
         }
       }
       
-      console.log('[Sally] Navigating to:', searchUrl);
+      console.log('[Sally] Navigating to:', searchUrl, '(query:', searchQuery, ')');
       // Save navigation timestamp to prevent re-navigation after page reload
       chrome.storage.local.set({ lastNavigationTime: Date.now() }, () => {
         window.location.href = searchUrl;
       });
     }
+  }
+
+  function getSearchQueryForAttempt(itemOrQuery) {
+    const rawQuery = typeof itemOrQuery === 'string' ? itemOrQuery : getItemSearchQuery(itemOrQuery);
+    const variants = getSearchQueryVariants(rawQuery);
+    const attemptIndex = typeof itemOrQuery === 'object'
+      ? Number(itemOrQuery?.searchAttemptIndex || 0)
+      : 0;
+
+    return variants[Math.min(Math.max(attemptIndex, 0), Math.max(variants.length - 1, 0))] ||
+      getPreferredSearchQuery(rawQuery) ||
+      rawQuery;
+  }
+
+  async function retryWithNextSearchQuery(item, reason = 'No products found') {
+    const rawQuery = getItemSearchQuery(item) || item.name;
+    const variants = getSearchQueryVariants(rawQuery);
+    const currentAttempt = Number(item.searchAttemptIndex || 0);
+    const nextAttempt = currentAttempt + 1;
+
+    if (nextAttempt >= variants.length) {
+      return false;
+    }
+
+    item.searchAttemptIndex = nextAttempt;
+    item.lastSearchFailureReason = reason;
+    item.status = 'searching';
+    await chrome.storage.local.set({ currentTask });
+
+    const nextQuery = variants[nextAttempt];
+    console.log('[Sally] Retrying search for', item.name, 'with broader query:', nextQuery);
+    showToast(`Trying broader search: ${nextQuery}`, 'info');
+    await sleep(500);
+    navigateToSearch(item);
+    return true;
   }
   
   /**
@@ -842,6 +1126,7 @@
   async function processSearchResults(item) {
     console.log('[Sally] Processing search results for:', item.name);
     console.log('[Sally] Current URL:', window.location.href);
+    const requestedSearchQuery = getItemSearchQuery(item) || item.name;
     
     // Wait for page to fully load
     await waitForPageLoad();
@@ -931,6 +1216,10 @@
       }
       
       if (products.length === 0) {
+        if (await retryWithNextSearchQuery(item, 'No products found')) {
+          return;
+        }
+
         reportItemFailed(item, 'No products found');
         await sleep(1000);
         moveToNextItem();
@@ -950,53 +1239,90 @@
     let bestIndex = 0;
     let aiUsed = false;
     try {
-      showToast('🤖 AI selecting best match...', 'info');
-      const matchResult = await matchProductWithAI(item.name, productInfoList);
+      showToast('Selecting best match...', 'info', 'search');
+      const matchResult = await matchProductWithAI(requestedSearchQuery, productInfoList);
       if (matchResult.success && matchResult.bestIndex !== undefined) {
         bestIndex = matchResult.bestIndex;
         aiUsed = true;
         console.log('[Sally] AI matched product:', matchResult.reason, '(confidence:', matchResult.confidence, ')');
         if (matchResult.shouldAdd === false) {
           console.log('[Sally] ❌ Backend rejected product:', matchResult.validationReason);
-          showToast(`❌ Wrong product: ${matchResult.validationReason || matchResult.reason}`, 'error');
-          reportItemFailed(item, `Match rejected: ${matchResult.validationReason || matchResult.reason}`);
-          await sleep(1500);
-          moveToNextItem();
-          return;
+          const fallbackMatch = getLocalFallbackMatch(item, productInfoList, [bestIndex]);
+          if (fallbackMatch) {
+            bestIndex = fallbackMatch.bestIndex;
+            aiUsed = false;
+            console.log('[Sally] 🔁 Using local fallback after backend rejection:', productInfoList[bestIndex]?.name);
+            showToast(`Using fallback: ${productInfoList[bestIndex]?.name?.substring(0, 30)}...`, 'info', 'refresh');
+          } else {
+            showToast(`Wrong product: ${matchResult.validationReason || matchResult.reason}`, 'error', 'x');
+            reportItemFailed(item, `Match rejected: ${matchResult.validationReason || matchResult.reason}`);
+            await sleep(1500);
+            moveToNextItem();
+            return;
+          }
         }
         if (matchResult.confidence >= 0.7) {
-          showToast(`✨ AI found: ${productInfoList[bestIndex]?.name?.substring(0, 30)}...`, 'success');
+          showToast(`Found: ${productInfoList[bestIndex]?.name?.substring(0, 30)}...`, 'success', 'check');
         } else {
-          showToast(`🤔 Best guess: ${productInfoList[bestIndex]?.name?.substring(0, 30)}...`, 'info');
+          showToast(`Best guess: ${productInfoList[bestIndex]?.name?.substring(0, 30)}...`, 'info', 'search');
         }
       }
     } catch (e) {
       console.log('[Sally] AI matching failed, using first product:', e);
       showToast('Using first result (AI unavailable)', 'info');
     }
+
+    const localPreference = basicProductMatch(item, productInfoList);
+    const aiFitScore = scoreProductFit(item, productInfoList[bestIndex], productInfoList);
+    if (
+      localPreference.success &&
+      localPreference.bestIndex !== bestIndex &&
+      localPreference.confidence > aiFitScore + 0.12
+    ) {
+      console.log('[Sally] 🔁 Local fit override selected a better value/size match:', {
+        aiChoice: productInfoList[bestIndex]?.name,
+        aiFitScore,
+        localChoice: productInfoList[localPreference.bestIndex]?.name,
+        localScore: localPreference.confidence,
+      });
+      bestIndex = localPreference.bestIndex;
+      aiUsed = false;
+      showToast(`Better fit: ${productInfoList[bestIndex]?.name?.substring(0, 30)}...`, 'info', 'refresh');
+    }
     
     // Get the best matching product
-    const product = products[bestIndex];
+    let product = products[bestIndex];
     console.log('[Sally] Selected product index:', bestIndex, product.tagName, product.className);
     
-    const productInfo = extractProductInfo(product);
+    let productInfo = extractProductInfo(product);
     console.log('[Sally] Selected product:', productInfo);
     
     // 🤖 AI VALIDATION: Verify this is the correct product before adding
-    showToast('🤖 Validating product match...', 'info');
-    const validation = await validateProductMatch(item.name, productInfo);
+    showToast('Validating product match...', 'info', 'search');
+    let validation = await validateProductMatch(requestedSearchQuery, productInfo);
     
     if (!validation.valid || validation.confidence < 0.7) {
       console.log('[Sally] ❌ AI rejected product:', validation.reason);
-      showToast(`❌ Wrong product: ${validation.reason}`, 'error');
-      reportItemFailed(item, `AI validation failed: ${validation.reason}`);
-      await sleep(1500);
-      moveToNextItem();
-      return;
+      const fallbackMatch = getLocalFallbackMatch(item, productInfoList, [bestIndex]);
+      if (fallbackMatch && fallbackMatch.bestIndex !== bestIndex) {
+        bestIndex = fallbackMatch.bestIndex;
+        product = products[bestIndex];
+        productInfo = extractProductInfo(product);
+        validation = await validateProductMatch(requestedSearchQuery, productInfo);
+        console.log('[Sally] 🔁 Retrying with fallback product:', productInfo.name);
+      }
+      
+      if (!validation.valid || validation.confidence < 0.7) {
+        showToast(`Wrong product: ${validation.reason}`, 'error', 'x');
+        reportItemFailed(item, `AI validation failed: ${validation.reason}`);
+        await sleep(1500);
+        moveToNextItem();
+        return;
+      }
     }
     
     console.log('[Sally] ✅ AI validated product (confidence:', validation.confidence, ')');
-    showToast(`✅ Validated: ${productInfo.name.substring(0, 30)}...`, 'success');
+    showToast(`Validated: ${productInfo.name.substring(0, 30)}...`, 'success', 'check');
     
     // Scroll product into view
     product.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -1110,6 +1436,8 @@
         
         addButton.scrollIntoView({ behavior: 'smooth', block: 'center' });
         await sleep(500);
+        const baselineQuantity = getVisibleProductQuantity(product);
+        const baselineTrolleyCount = getTrolleyCount();
         
         // Use appropriate click method
         if (isReactSite) {
@@ -1117,11 +1445,11 @@
         } else {
           await performNativeClick(addButton);
         }
-        
-        // Wait for cart to update
-        const waitTime = isReactSite ? 2500 : 1000;
-        console.log('[Sally] Waiting', waitTime, 'ms for cart to update...');
-        await sleep(waitTime);
+
+        const confirmed = await waitForProductStateChange(product, baselineQuantity, baselineTrolleyCount, baselineQuantity + 1);
+        if (!confirmed) {
+          console.log('[Sally] ⚠️ Click did not visibly update the cart on attempt', i + 1);
+        }
         
         // For quantity > 1, find increment button after first add
         if (i === 0 && item.quantity > 1) {
@@ -1135,8 +1463,20 @@
       }
     }
     
+    const verification = await verifyAddToCart(product, trolleyCountBefore, item.quantity);
+    if (!verification.success) {
+      if (verification.authRequired) {
+        return;
+      }
+      console.log('[Sally] ❌ Add verification failed:', verification.reason);
+      reportItemFailed(item, verification.reason);
+      await sleep(1000);
+      moveToNextItem();
+      return;
+    }
+
     // Report success
-    reportItemAdded(item, productInfo.name, productInfo.price * item.quantity);
+    reportItemAdded(item, productInfo.name, productInfo.price, item.quantity);
     
     // CRITICAL: Wait longer before navigating on Tesco to ensure cart state is saved
     // Tesco's React app needs time to sync the cart to the server
@@ -1273,8 +1613,82 @@
         // Invalid selector, skip
       }
     }
-    
+
+    const layoutProducts = scanProductCardsFromPageLayout();
+    if (layoutProducts.length > 0) {
+      console.log('[Sally] Found', layoutProducts.length, 'products with smart layout scan');
+      return layoutProducts;
+    }
+
     return [];
+  }
+
+  function scanProductCardsFromPageLayout() {
+    const addButtons = Array.from(document.querySelectorAll('button, [role="button"]'))
+      .map((button) => ({ button, score: scoreAddButtonCandidate(button, null) }))
+      .filter((candidate) => candidate.score >= 50)
+      .sort((a, b) => b.score - a.score);
+
+    const products = [];
+    const seen = new Set();
+
+    for (const { button } of addButtons) {
+      const card = findProductContainerForButton(button);
+      if (!card || seen.has(card)) continue;
+
+      const info = extractProductInfo(card);
+      if (!info.name || info.name.length < 2) continue;
+
+      seen.add(card);
+      products.push(card);
+
+      if (products.length >= 20) break;
+    }
+
+    return products;
+  }
+
+  function findProductContainerForButton(button) {
+    const selectors = [
+      '[data-sku]',
+      '[data-testid*="product"]',
+      '[data-test*="product"]',
+      '[data-auto*="product"]',
+      '[data-auto-id*="product"]',
+      'article',
+      'li',
+      '[role="listitem"]',
+      '[class*="product"]',
+      '[class*="Product"]',
+      '[class*="fop"]',
+      '[class*="tile"]',
+      '[class*="Tile"]',
+      '[class*="card"]',
+      '[class*="Card"]',
+    ];
+
+    for (const selector of selectors) {
+      const candidate = button.closest(selector);
+      if (candidate && candidate !== document.body) {
+        return candidate;
+      }
+    }
+
+    let node = button.parentElement;
+    let depth = 0;
+    while (node && node !== document.body && depth < 5) {
+      const text = node.textContent || '';
+      const rect = node.getBoundingClientRect();
+      const hasPrice = /£\s?\d|p\b/i.test(text);
+      const hasUsefulSize = rect.width >= 120 && rect.height >= 80;
+      if (hasPrice && hasUsefulSize) {
+        return node;
+      }
+      node = node.parentElement;
+      depth++;
+    }
+
+    return null;
   }
   
   /**
@@ -1493,7 +1907,11 @@
       }
     }
     
-    return { name, price };
+    return {
+      name,
+      price,
+      ...extractProductAttributes(name, price),
+    };
   }
   
   /**
@@ -1699,6 +2117,12 @@
         return el;
       }
     }
+
+    const smartButton = findSmartAddButton(product);
+    if (smartButton) {
+      console.log('[Sally] Found add button with smart layout scan:', describeButton(smartButton));
+      return smartButton;
+    }
     
     // Tesco-specific: smarter button detection
     if (window.location.hostname.includes('tesco.com')) {
@@ -1758,6 +2182,12 @@
    * Looks for the first visible Add button, prioritizing ones near the top of the viewport
    */
   function findAddButtonOnPage() {
+    const smartButton = findSmartAddButton(document, { viewportOnly: true });
+    if (smartButton) {
+      console.log('[Sally] Found page add button with smart scan:', describeButton(smartButton));
+      return smartButton;
+    }
+
     const buttons = document.querySelectorAll('button, [role="button"]');
     const candidates = [];
     
@@ -1794,6 +2224,104 @@
     
     return null;
   }
+
+  function findSmartAddButton(scope, options = {}) {
+    const buttons = Array.from(scope.querySelectorAll('button, [role="button"]'));
+    const scored = [];
+
+    for (const button of buttons) {
+      const score = scoreAddButtonCandidate(button, scope, options);
+      if (score < 50) continue;
+
+      scored.push({ button, score, top: button.getBoundingClientRect().top });
+    }
+
+    scored.sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      return a.top - b.top;
+    });
+
+    return scored[0]?.button || null;
+  }
+
+  function scoreAddButtonCandidate(button, scope, options = {}) {
+    if (!button || isDisabledElement(button) || !isVisibleElement(button)) return 0;
+
+    const rect = button.getBoundingClientRect();
+    if (rect.width < 20 || rect.height < 20) return 0;
+    if (options.viewportOnly && (rect.bottom < 0 || rect.top > window.innerHeight)) return 0;
+
+    const semanticText = getButtonSemanticText(button);
+    if (isNegativeCartAction(semanticText)) return 0;
+
+    let score = 0;
+    if (/\b(add|buy)\b/.test(semanticText)) score += 45;
+    if (/\b(add to|add item|add product|add one)\b/.test(semanticText)) score += 25;
+    if (/\b(trolley|basket|cart|bag)\b/.test(semanticText)) score += 18;
+    if (/\b(increase|increment|plus)\b/.test(semanticText)) score += 20;
+    if (/^\+$/.test((button.textContent || '').trim())) score += 25;
+    if (button.querySelector('svg')) score += 5;
+    if (button.closest('[data-sku], [data-testid*="product"], [data-test*="product"], [data-auto*="product"], article, li, [role="listitem"]')) {
+      score += 10;
+    }
+
+    const productText = scope && scope !== document ? String(scope.textContent || '').toLowerCase() : '';
+    if (productText && /£\s?\d|p\b/.test(productText)) score += 8;
+
+    if (/\b(view|details|more|sort|filter|menu|close|sign in|login|checkout|basket summary|view basket|view trolley)\b/.test(semanticText)) {
+      score -= 35;
+    }
+
+    return score;
+  }
+
+  function getButtonSemanticText(button) {
+    const parts = [
+      button.textContent,
+      button.getAttribute('aria-label'),
+      button.getAttribute('title'),
+      button.getAttribute('data-testid'),
+      button.getAttribute('data-test'),
+      button.getAttribute('data-auto'),
+      button.getAttribute('data-auto-id'),
+      button.className,
+    ];
+
+    return parts
+      .map((part) => String(part || ''))
+      .join(' ')
+      .replace(/([a-z])([A-Z])/g, '$1 $2')
+      .toLowerCase()
+      .trim();
+  }
+
+  function isVisibleElement(element) {
+    const rect = element.getBoundingClientRect();
+    const style = window.getComputedStyle(element);
+    return rect.width > 0 &&
+      rect.height > 0 &&
+      style.visibility !== 'hidden' &&
+      style.display !== 'none' &&
+      Number(style.opacity || 1) > 0.05;
+  }
+
+  function isDisabledElement(element) {
+    return Boolean(
+      element.disabled ||
+      element.getAttribute('aria-disabled') === 'true' ||
+      element.closest('[aria-disabled="true"], [disabled]')
+    );
+  }
+
+  function isNegativeCartAction(text) {
+    return /\b(remove|delete|decrease|reduce|minus|subtract|unavailable|out of stock|notify|favourite|favorite|save for later)\b/.test(text) ||
+      /^-$/.test(text.trim());
+  }
+
+  function describeButton(button) {
+    const label = button.getAttribute('aria-label') || button.getAttribute('title') || button.textContent || button.className || button.tagName;
+    return String(label || '').trim().replace(/\s+/g, ' ').slice(0, 80);
+  }
   
   /**
    * Smart quantity input - CRITICAL ENHANCEMENT
@@ -1801,65 +2329,93 @@
    */
   async function addItemWithSmartQuantity(item, addButton, product) {
     console.log('[Sally] 📦 Smart quantity input for:', item.name, 'qty:', item.quantity);
-    
-    if (item.quantity <= 1) {
-      // For quantity 1, just click the add button once
-      console.log('[Sally] Quantity 1, using single click');
-      
-      const isReactSite = window.location.hostname.includes('tesco.com') || 
-                          window.location.hostname.includes('morrisons.com');
-      
-      if (isReactSite) {
-        await performReactClick(addButton);
-      } else {
-        await performNativeClick(addButton);
+    try {
+      if (item.quantity <= 1) {
+        // For quantity 1, just click the add button once
+        console.log('[Sally] Quantity 1, using single click');
+        const baselineQuantity = getVisibleProductQuantity(product);
+        const baselineTrolleyCount = getTrolleyCount();
+        
+        const isReactSite = window.location.hostname.includes('tesco.com') || 
+                            window.location.hostname.includes('morrisons.com');
+        
+        if (isReactSite) {
+          await performReactClick(addButton);
+        } else {
+          await performNativeClick(addButton);
+        }
+
+        return await waitForProductStateChange(product, baselineQuantity, baselineTrolleyCount, 1);
       }
       
-      await sleep(2000);
-      return true;
-    }
-    
-    // First, try to find quantity input field
-    const quantityInput = findQuantityInput(product);
-    
-    if (quantityInput) {
-      console.log('[Sally] 🎯 Found quantity input, setting directly to:', item.quantity);
+      // First, try to find quantity input field
+      const quantityInput = findQuantityInput(product, addButton);
       
-      // Clear and set quantity directly
-      quantityInput.focus();
-      quantityInput.select();
-      quantityInput.value = item.quantity.toString();
-      
-      // Trigger change events
-      quantityInput.dispatchEvent(new Event('input', { bubbles: true }));
-      quantityInput.dispatchEvent(new Event('change', { bubbles: true }));
-      quantityInput.dispatchEvent(new Event('blur', { bubbles: true }));
-      
-      await sleep(500);
-      
-      // Then click add once
-      const isReactSite = window.location.hostname.includes('tesco.com') || 
-                          window.location.hostname.includes('morrisons.com');
-      
-      if (isReactSite) {
-        await performReactClick(addButton);
-      } else {
-        await performNativeClick(addButton);
+      if (quantityInput) {
+        console.log('[Sally] 🎯 Found quantity input, setting directly to:', item.quantity);
+        const baselineTrolleyCount = getTrolleyCount();
+        
+        // Clear and set quantity directly
+        quantityInput.focus();
+        quantityInput.select();
+        quantityInput.value = item.quantity.toString();
+        
+        // Trigger change events
+        quantityInput.dispatchEvent(new Event('input', { bubbles: true }));
+        quantityInput.dispatchEvent(new Event('change', { bubbles: true }));
+        quantityInput.dispatchEvent(new Event('blur', { bubbles: true }));
+        
+        await sleep(500);
+        
+        // Then click add once
+        const isReactSite = window.location.hostname.includes('tesco.com') || 
+                            window.location.hostname.includes('morrisons.com');
+        
+        if (isReactSite) {
+          await performReactClick(addButton);
+        } else {
+          await performNativeClick(addButton);
+        }
+
+        return await waitForProductStateChange(product, 0, baselineTrolleyCount, item.quantity);
       }
-      
-      await sleep(2000);
-      return true;
-      
-    } else {
+
       console.log('[Sally] 🔄 No quantity input found, will use multiple clicks');
-      return false; // Fallback to multiple clicks
+      return false;
+    } catch (error) {
+      console.error('[Sally] Smart quantity input failed:', error);
+      return false;
     }
+  }
+
+  async function waitForProductStateChange(product, baselineQuantity, baselineTrolleyCount, expectedMinimumQuantity) {
+    for (let attempt = 0; attempt < 6; attempt++) {
+      await sleep(450);
+
+      const currentQuantity = getVisibleProductQuantity(product);
+      const currentTrolleyCount = getTrolleyCount();
+      const incrementButton = findIncrementButton(product);
+
+      if (baselineTrolleyCount >= 0 && currentTrolleyCount > baselineTrolleyCount) {
+        return true;
+      }
+
+      if (currentQuantity >= expectedMinimumQuantity) {
+        return true;
+      }
+
+      if (expectedMinimumQuantity === 1 && incrementButton) {
+        return true;
+      }
+    }
+
+    return false;
   }
 
   /**
    * Find quantity input field within a product card
    */
-  function findQuantityInput(product) {
+  function findQuantityInput(product, addButton = null) {
     const selectors = [
       'input[type="number"]',
       'input[name*="quantity"]',
@@ -1918,6 +2474,7 @@
     // Also trigger React synthetic events
     const reactClick = new Event('click', { bubbles: true });
     button.dispatchEvent(reactClick);
+    button.click();
   }
 
   /**
@@ -1932,6 +2489,55 @@
     
     // Simple click
     button.click();
+  }
+
+  function getVisibleProductQuantity(product) {
+    const quantityInput = findQuantityInput(product, null);
+    if (quantityInput) {
+      const numeric = Number(quantityInput.value);
+      if (Number.isFinite(numeric) && numeric > 0) {
+        return numeric;
+      }
+    }
+
+    return 0;
+  }
+
+  async function verifyAddToCart(product, previousTrolleyCount, requestedQuantity) {
+    for (let attempt = 0; attempt < 5; attempt++) {
+      await sleep(700);
+
+      const authBlocker = getStoreAuthBlocker();
+      if (authBlocker) {
+        blockTaskForAuth(authBlocker.message);
+        return {
+          success: false,
+          authRequired: true,
+          reason: authBlocker.message,
+        };
+      }
+
+      const currentTrolleyCount = getTrolleyCount();
+      const visibleQuantity = getVisibleProductQuantity(product);
+      const incrementButton = findIncrementButton(product);
+
+      if (previousTrolleyCount >= 0 && currentTrolleyCount >= previousTrolleyCount + 1) {
+        return { success: true, reason: 'Trolley count increased' };
+      }
+
+      if (visibleQuantity >= Math.min(requestedQuantity, 1)) {
+        return { success: true, reason: 'Quantity control updated' };
+      }
+
+      if (requestedQuantity === 1 && incrementButton) {
+        return { success: true, reason: 'Increment button appeared after add' };
+      }
+    }
+
+    return {
+      success: false,
+      reason: 'Cart did not update after clicking add',
+    };
   }
 
   /**
@@ -2074,8 +2680,9 @@
   /**
    * Report item added successfully
    */
-  function reportItemAdded(item, productName, price) {
-    console.log('[Sally] Item added:', item.name, '->', productName, '£' + price);
+  function reportItemAdded(item, productName, unitPrice, quantity) {
+    const totalPrice = (Number(unitPrice) || 0) * (Number(quantity) || 1);
+    console.log('[Sally] Item added:', item.name, '->', productName, '£' + totalPrice);
     
     // Log trolley count for debugging
     const trolleyCount = getTrolleyCount();
@@ -2084,7 +2691,9 @@
     // Update task
     item.status = 'added';
     item.productName = productName;
-    item.price = price;
+    item.unitPrice = Number(unitPrice) || 0;
+    item.price = totalPrice;
+    item.resolvedAt = new Date().toISOString();
     chrome.storage.local.set({ currentTask });
     
     // Update overlay
@@ -2094,7 +2703,12 @@
     // Notify background
     chrome.runtime.sendMessage({
       type: 'ITEM_ADDED',
-      data: { itemName: item.name, productName, price }
+      data: {
+        itemName: item.name,
+        productName,
+        price: totalPrice,
+        unitPrice: Number(unitPrice) || 0,
+      }
     });
     
     // Update running stats (items added this session)
@@ -2113,6 +2727,7 @@
     // Update task
     item.status = 'failed';
     item.failReason = reason;
+    item.resolvedAt = new Date().toISOString();
     chrome.storage.local.set({ currentTask });
     
     // Update overlay
@@ -2131,11 +2746,17 @@
    */
   function moveToNextItem() {
     if (!currentTask) return;
+
+    if (currentTask.status === 'paused') {
+      console.log('[Sally] Task paused; not moving to next item');
+      updateOverlay();
+      return;
+    }
     
     const pendingItem = currentTask.items.find(i => i.status === 'pending');
     if (pendingItem) {
       console.log('[Sally] Moving to next item:', pendingItem.name);
-      navigateToSearch(pendingItem.name);
+      navigateToSearch(pendingItem);
     } else {
       console.log('[Sally] All items processed, going to checkout!');
       goToCheckout();
@@ -2156,7 +2777,7 @@
     } else if (host.includes('asda.com')) {
       checkoutUrl = 'https://groceries.asda.com/trolley';
     } else if (host.includes('ocado.com')) {
-      checkoutUrl = 'https://www.ocado.com/webshop/getBasket.do';
+      checkoutUrl = 'https://www.ocado.com/basket';
     } else if (host.includes('waitrose.com')) {
       checkoutUrl = 'https://www.waitrose.com/ecom/shop/trolley';
     } else if (host.includes('morrisons.com')) {
@@ -2167,7 +2788,7 @@
     
     if (checkoutUrl) {
       console.log('[Sally] Navigating to checkout:', checkoutUrl);
-      showToast('Shopping complete! Going to checkout... 🛒', 'success');
+      showToast('Shopping complete. Going to checkout...', 'success', 'cart');
       
       // Update task status
       currentTask.status = 'checkout';
@@ -2208,6 +2829,7 @@
   // SVG Icons
   const ICONS = {
     salad: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 21h10"/><path d="M12 21a9 9 0 0 0 9-9H3a9 9 0 0 0 9 9Z"/><path d="M11.38 12a2.4 2.4 0 0 1-.4-4.77 2.4 2.4 0 0 1 3.2-2.77 2.4 2.4 0 0 1 3.47-.63 2.4 2.4 0 0 1 3.37 3.37 2.4 2.4 0 0 1-1.1 3.7 2.51 2.51 0 0 1 .03 1.1"/><path d="m13 12 4-4"/><path d="M10.9 7.25A3.99 3.99 0 0 0 4 10c0 .73.2 1.41.54 2"/></svg>',
+    wordmark: `<img class="heysalad-wordmark-logo" src="${chrome.runtime.getURL('icons/heysalad-logo-black.svg')}" alt="HeySalad">`,
     bot: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="10" x="3" y="11" rx="2"/><circle cx="12" cy="5" r="2"/><path d="M12 7v4"/><line x1="8" x2="8" y1="16" y2="16"/><line x1="16" x2="16" y1="16" y2="16"/></svg>',
     cart: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/></svg>',
     check: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>',
@@ -2215,7 +2837,13 @@
     clock: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>',
     circle: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/></svg>',
     minus: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/></svg>',
-    stop: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="14" height="14" x="5" y="5" rx="2"/></svg>'
+    chevronDown: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>',
+    chevronUp: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m18 15-6-6-6 6"/></svg>',
+    search: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>',
+    refresh: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 1-15.6 6.1"/><path d="M3 12A9 9 0 0 1 18.6 5.9"/><path d="M3 19v-5h5"/><path d="M21 5v5h-5"/></svg>',
+    stop: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="14" height="14" x="5" y="5" rx="2"/></svg>',
+    pause: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><rect width="4" height="14" x="6" y="5" rx="1"/><rect width="4" height="14" x="14" y="5" rx="1"/></svg>',
+    play: '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>'
   };
   
   /**
@@ -2229,11 +2857,8 @@
     overlayElement.classList.add('minimized');
     overlayElement.innerHTML = `
       <div class="heysalad-header">
-        <span class="heysalad-title">${ICONS.salad}<span class="heysalad-title-text">Sally is shopping</span></span>
-        <div class="heysalad-header-actions">
-          <button class="heysalad-open-panel" id="heysalad-open-panel" type="button">Open panel</button>
-          <button class="heysalad-minimize" id="heysalad-minimize" type="button">${ICONS.minus}</button>
-        </div>
+        <span class="heysalad-title">${ICONS.wordmark}</span>
+        <span class="heysalad-loading-spinner" aria-label="Shopping in progress" title="Shopping in progress"></span>
       </div>
       <div class="heysalad-body">
         <div class="heysalad-status">
@@ -2249,6 +2874,7 @@
         <div class="heysalad-items" id="heysalad-items"></div>
         <div class="heysalad-actions">
           <button class="heysalad-btn heysalad-btn-primary" id="heysalad-checkout" style="display:none;">${ICONS.cart} View Cart</button>
+          <button class="heysalad-btn heysalad-btn-secondary" id="heysalad-pause">${ICONS.pause} Pause</button>
           <button class="heysalad-btn heysalad-btn-secondary" id="heysalad-stop">${ICONS.stop} Stop</button>
         </div>
       </div>
@@ -2256,23 +2882,19 @@
     
     document.body.appendChild(overlayElement);
 
-    // Event listeners
-    document.getElementById('heysalad-minimize').addEventListener('click', (e) => {
-      e.stopPropagation();
-      overlayElement.classList.toggle('minimized');
-    });
-
-    document.getElementById('heysalad-open-panel').addEventListener('click', async (e) => {
-      e.stopPropagation();
-      const response = await chrome.runtime.sendMessage({ type: 'OPEN_SIDE_PANEL' });
-      if (!response?.success) {
-        showToast('Could not open the Sally panel', 'error');
-      }
-    });
-    
     document.getElementById('heysalad-stop').addEventListener('click', () => {
       chrome.runtime.sendMessage({ type: 'STOP_SHOPPING' });
       hideOverlay();
+    });
+
+    document.getElementById('heysalad-pause').addEventListener('click', () => {
+      if (currentTask?.status === 'paused') {
+        chrome.runtime.sendMessage({ type: 'RESUME_SHOPPING' });
+        handleResumeShopping();
+      } else {
+        chrome.runtime.sendMessage({ type: 'PAUSE_SHOPPING' });
+        handlePauseShopping();
+      }
     });
     
     document.getElementById('heysalad-checkout').addEventListener('click', () => {
@@ -2280,13 +2902,21 @@
     });
 
     overlayElement.querySelector('.heysalad-title').addEventListener('click', async () => {
-      const response = await chrome.runtime.sendMessage({ type: 'OPEN_SIDE_PANEL' });
-      if (!response?.success) {
-        overlayElement.classList.toggle('minimized');
-      }
+      await chrome.runtime.sendMessage({ type: 'OPEN_SIDE_PANEL' });
     });
     
     updateOverlay();
+    updateOverlayChromeState();
+  }
+
+  function updateOverlayChromeState() {
+    if (!overlayElement) return;
+    const minimizeButton = overlayElement.querySelector('#heysalad-minimize');
+    if (!minimizeButton) return;
+    const isMinimized = overlayElement.classList.contains('minimized');
+    minimizeButton.innerHTML = isMinimized ? ICONS.chevronUp : ICONS.chevronDown;
+    minimizeButton.setAttribute('aria-label', isMinimized ? 'Expand shopping status' : 'Collapse shopping status');
+    minimizeButton.setAttribute('title', isMinimized ? 'Expand shopping status' : 'Collapse shopping status');
   }
   
   /**
@@ -2367,28 +2997,45 @@
     // Show/hide checkout button
     const checkoutBtn = document.getElementById('heysalad-checkout');
     const stopBtn = document.getElementById('heysalad-stop');
+    const pauseBtn = document.getElementById('heysalad-pause');
     
-    if (searchingItem) {
+    if (currentTask.status === 'paused') {
+      statusText.textContent = 'Shopping paused';
+      if (checkoutBtn) checkoutBtn.style.display = 'none';
+      if (stopBtn) stopBtn.style.display = 'block';
+      if (pauseBtn) {
+        pauseBtn.style.display = 'block';
+        pauseBtn.innerHTML = `${ICONS.play} Resume`;
+      }
+    } else if (searchingItem) {
       statusText.textContent = `Searching for ${searchingItem.name}...`;
       if (checkoutBtn) checkoutBtn.style.display = 'none';
       if (stopBtn) stopBtn.style.display = 'block';
+      if (pauseBtn) {
+        pauseBtn.style.display = 'block';
+        pauseBtn.innerHTML = `${ICONS.pause} Pause`;
+      }
     } else if (pendingItem) {
       statusText.textContent = `Next: ${pendingItem.name}`;
       if (checkoutBtn) checkoutBtn.style.display = 'none';
       if (stopBtn) stopBtn.style.display = 'block';
+      if (pauseBtn) {
+        pauseBtn.style.display = 'block';
+        pauseBtn.innerHTML = `${ICONS.pause} Pause`;
+      }
     } else {
       statusText.textContent = 'Shopping complete!';
       if (checkoutBtn) checkoutBtn.style.display = 'block';
       if (stopBtn) stopBtn.innerHTML = `${ICONS.x} Close`;
+      if (pauseBtn) pauseBtn.style.display = 'none';
     }
     
     // Progress
-    const total = currentTask.items.length;
-    const completed = currentTask.items.filter(i => i.status === 'added' || i.status === 'failed').length;
-    const percent = total > 0 ? (completed / total) * 100 : 0;
+    const metrics = computeTaskMetrics(currentTask);
+    const percent = getProgressPercentage(metrics);
     
     progressFill.style.width = `${percent}%`;
-    progressText.textContent = `${completed} of ${total} items`;
+    progressText.textContent = formatProgressSummary(metrics);
     
     // Items list with SVG icons
     itemsContainer.innerHTML = currentTask.items.map(item => {
@@ -2421,10 +3068,19 @@
   /**
    * Show a toast notification
    */
-  function showToast(message, type = 'info') {
+  function showToast(message, type = 'info', icon = type) {
     const toast = document.createElement('div');
     toast.className = `heysalad-toast ${type}`;
-    toast.textContent = message;
+    const iconElement = document.createElement('span');
+    iconElement.className = 'heysalad-toast-icon';
+    iconElement.setAttribute('aria-hidden', 'true');
+    iconElement.innerHTML = ICONS[icon] || ICONS[type] || ICONS.circle;
+
+    const textElement = document.createElement('span');
+    textElement.className = 'heysalad-toast-text';
+    textElement.textContent = message;
+
+    toast.append(iconElement, textElement);
     document.body.appendChild(toast);
     
     setTimeout(() => toast.remove(), 3000);
@@ -2445,9 +3101,24 @@
         handleStartShopping(message.task);
         sendResponse({ success: true });
         break;
+
+      case 'START_SHOPPING_TASK':
+        handleStartShopping(message.task);
+        sendResponse({ success: true });
+        break;
         
       case 'STOP_SHOPPING':
         handleStopShopping();
+        sendResponse({ success: true });
+        break;
+
+      case 'PAUSE_SHOPPING':
+        handlePauseShopping();
+        sendResponse({ success: true });
+        break;
+
+      case 'RESUME_SHOPPING':
+        handleResumeShopping();
         sendResponse({ success: true });
         break;
         
@@ -2463,27 +3134,24 @@
     console.log('[Sally] Starting shopping task:', task);
     
     currentTask = task;
-    isProcessing = true;
+    isProcessing = false;
     
     // Accept cookies if needed
     await acceptCookies();
     
     // Show overlay
     showOverlay();
-    
-    // Start with first item
-    const firstItem = task.items.find(i => i.status === 'pending');
-    if (firstItem) {
-      console.log('[Sally] Starting with first item:', firstItem.name);
-      firstItem.status = 'searching';
-      updateOverlay();
-      
-      // Navigate to search for first item
-      navigateToSearch(firstItem.name);
-    } else {
+    updateOverlay();
+    chrome.storage.local.set({ currentTask });
+
+    const hasPendingWork = task.items.some((item) => item.status === 'pending' || item.status === 'searching');
+    if (!hasPendingWork) {
       console.log('[Sally] No pending items found');
       showToast('No items to shop for', 'error');
+      return;
     }
+
+    scheduleProcessingCycle(500);
   }
   
   /**
@@ -2497,6 +3165,29 @@
     
     hideOverlay();
     showToast('Shopping stopped', 'info');
+  }
+
+  function handlePauseShopping() {
+    if (!currentTask || currentTask.status === 'paused') return;
+    console.log('[Sally] Pausing shopping task');
+    currentTask.status = 'paused';
+    currentTask.pausedAt = new Date().toISOString();
+    isProcessing = false;
+    chrome.storage.local.set({ currentTask });
+    updateOverlay();
+    showToast('Shopping paused', 'info');
+  }
+
+  function handleResumeShopping() {
+    if (!currentTask || currentTask.status !== 'paused') return;
+    console.log('[Sally] Resuming shopping task');
+    delete currentTask.pausedAt;
+    currentTask.status = 'shopping';
+    chrome.storage.local.set({ currentTask });
+    showOverlay();
+    updateOverlay();
+    showToast('Shopping resumed', 'info');
+    scheduleProcessingCycle(300);
   }
   
   // ============================================

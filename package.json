@@ -1,16 +1,24 @@
 {
   "name": "sally-chrome-extension",
-  "version": "1.0.0",
-  "description": "Sally by HeySalad® - AI Shopping Assistant Chrome Extension",
+  "version": "1.0.28",
+  "description": "Save time on repeat shopping. Chat with Sally to plan lists, build carts, and run shopping tasks.",
   "scripts": {
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
-    "test:qr": "jest tests/qr-functionality.test.js"
+    "test:qr": "jest tests/qr-functionality.test.js",
+    "version:sync": "node scripts/sync-version.mjs",
+    "version:patch": "node scripts/sync-version.mjs patch",
+    "version:minor": "node scripts/sync-version.mjs minor",
+    "version:major": "node scripts/sync-version.mjs major",
+    "prepackage:extension": "node scripts/sync-version.mjs",
+    "package:extension": "node scripts/package-extension.mjs"
   },
   "jest": {
     "testEnvironment": "jsdom",
-    "setupFilesAfterEnv": ["<rootDir>/tests/setup.js"],
+    "setupFilesAfterEnv": [
+      "<rootDir>/tests/setup.js"
+    ],
     "collectCoverageFrom": [
       "popup/**/*.js",
       "!popup/qrcode.min.js",

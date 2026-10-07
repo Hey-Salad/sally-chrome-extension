@@ -17,7 +17,7 @@ function initOcadoShopper() {
     name: 'Ocado',
     homeUrl: 'https://www.ocado.com/',
     searchUrl: 'https://www.ocado.com/search?entry=',
-    cartUrl: 'https://www.ocado.com/webshop/getBasket.do',
+    cartUrl: 'https://www.ocado.com/basket',
     selectors: {
       // Search
       searchInput: 'input[name="entry"], #search-input, .search-input',

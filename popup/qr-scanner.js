@@ -3,8 +3,7 @@
  * Uses jsQR library for QR code detection
  */
 
-// Import jsQR from CDN (will be loaded in HTML)
-// <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+// jsQR is bundled locally in popup/jsqr.min.js.
 
 class QRScanner {
   constructor() {

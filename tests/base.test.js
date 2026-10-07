@@ -75,7 +75,7 @@ describe('Sally Shopping Extension', () => {
       tesco: 'https://www.tesco.com/groceries/en-GB/trolley',
       sainsburys: 'https://www.sainsburys.co.uk/gol-ui/trolley',
       asda: 'https://groceries.asda.com/trolley',
-      ocado: 'https://www.ocado.com/webshop/getBasket.do',
+      ocado: 'https://www.ocado.com/basket',
       waitrose: 'https://www.waitrose.com/ecom/shop/trolley',
       morrisons: 'https://groceries.morrisons.com/trolley',
       aldi: 'https://www.aldi.co.uk/checkout/cart'
