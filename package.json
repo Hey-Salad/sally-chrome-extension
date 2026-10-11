@@ -1,6 +1,7 @@
 {
   "name": "sally-chrome-extension",
   "version": "1.0.0",
+  "license": "AGPL-3.0-only",
   "description": "Sally by HeySalad® - AI Shopping Assistant Chrome Extension",
   "scripts": {
     "test": "jest",
