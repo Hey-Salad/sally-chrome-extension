@@ -1,25 +1,12 @@
-## Summary
+## What & why
 
-Describe what changed and why.
+## How tested
+- [ ] lint  - [ ] typecheck  - [ ] tests (paste output / CI link)
 
-## Risk
-
-- [ ] Low
-- [ ] Medium
-- [ ] High
-
-## Validation
-
-- [ ] `npm test`
-- [ ] Extension loaded in `chrome://extensions`
-- [ ] Manual shopping smoke test
-
-## Security Checklist
-
-- [ ] No secrets added
-- [ ] Manifest permission changes justified
-- [ ] Public/private boundary respected (`OPEN_SOURCE_SCOPE.md`)
-
-## Screenshots / Recording
-
-Attach UI evidence for visible changes.
+## Checklist
+- [ ] Small, single-purpose PR
+- [ ] No secrets in code
+- [ ] CHANGELOG updated
+- [ ] New routes require auth
+- [ ] PostHog events follow object_action
+- [ ] AI changes: evals run, cost/latency noted

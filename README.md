@@ -239,3 +239,6 @@ Licensed under the GNU Affero General Public License v3.0 only (AGPL-3.0-only). 
 
 - **Email**: peter@heysalad.io
 - **Website**: https://heysalad.io
+
+## 1.0.29 restructure
+New layout: `extension/` (MV3 extension), `api/` (Cloudflare Worker), `docs/ROADMAP.md`. Root files are the legacy 1.0.7 code (tag `v1.0.7-legacy`) and stay until the 1.0.28 source import replaces them. Follows [Hey-Salad/engineering-standard](https://github.com/Hey-Salad/engineering-standard); agents read `AGENTS.md`.

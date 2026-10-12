@@ -4,3 +4,9 @@
 /background/* @Hey-Salad/platform
 /content-scripts/* @Hey-Salad/platform
 /manifest.json @Hey-Salad/platform
+
+# 1.0.29 layout (engineering standard)
+/extension/ @Hey-Salad/platform @chilu18
+/api/ @Hey-Salad/platform @chilu18
+/docs/ @Hey-Salad/platform @chilu18
+/AGENTS.md @chilu18
