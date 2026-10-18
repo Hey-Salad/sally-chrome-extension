@@ -18,15 +18,17 @@
   <meta name="twitter:title" content="Sally - AI Shopping Assistant">
   <meta name="twitter:description" content="Your weekly shop. Done in 2 minutes.">
   
-  <!-- Favicon -->
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 128 128'><circle cx='64' cy='64' r='64' fill='%23E01D1D'/><text x='64' y='92' font-family='Arial Black' font-size='80' font-weight='900' fill='white' text-anchor='middle'>S</text></svg>">
-  
-  <!-- Inter Font -->
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <link rel="icon" href="../icons/heysalad-icon.svg">
   
   <style>
+    @font-face {
+      font-family: "Figtree";
+      src: url("../fonts/Figtree-VariableFont_wght.ttf") format("truetype");
+      font-weight: 100 900;
+      font-style: normal;
+      font-display: swap;
+    }
+
     * {
       margin: 0;
       padding: 0;
@@ -34,18 +36,27 @@
     }
     
     :root {
-      --cherry: #E01D1D;
-      --cherry-light: #FF4444;
-      --cherry-dark: #B01515;
-      --cherry-bg: #FFF5F5;
-      --text: #1a1a1a;
-      --text-muted: #666666;
+      --hs-bg: #ffffff;
+      --hs-ink: #1f1416;
+      --hs-cherry: #ed4c4c;
+      --hs-peach: #faa09a;
+      --hs-light-peach: #ffd0cd;
+      --hs-border: #ffd0cd;
+      --hs-success-bg: #ffd0cd;
+      --hs-success-fg: #1f1416;
+      --hs-ink-muted: rgba(31, 20, 22, 0.62);
+      --hs-on-cherry: #ffffff;
+      --hs-cherry-hover: #d83f3f;
+      --cherry: var(--hs-cherry);
+      --cherry-bg: var(--hs-bg);
+      --text: var(--hs-ink);
+      --text-muted: var(--hs-ink-muted);
     }
     
     body {
-      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-      background: white;
-      color: var(--text);
+      font-family: "Figtree", sans-serif;
+      background: var(--hs-bg);
+      color: var(--hs-ink);
       line-height: 1.6;
       overflow-x: hidden;
     }
@@ -67,7 +78,7 @@
       align-items: center;
       gap: 8px;
       background: var(--cherry-bg);
-      border: 1px solid rgba(224, 29, 29, 0.2);
+      border: 1px solid var(--hs-light-peach);
       padding: 8px 16px;
       border-radius: 100px;
       font-size: 13px;
@@ -90,21 +101,10 @@
     }
     
     .logo {
-      width: 100px;
-      height: 100px;
-      background: var(--cherry);
-      border-radius: 28px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
+      width: 120px;
+      height: auto;
       margin-bottom: 32px;
-      box-shadow: 0 20px 60px rgba(224, 29, 29, 0.3);
-    }
-    
-    .logo-text {
-      font-size: 60px;
-      font-weight: 900;
-      color: white;
+      background: none;
     }
     
     h1 {
@@ -138,18 +138,19 @@
       background: var(--cherry);
       color: white;
       padding: 18px 40px;
-      border-radius: 100px;
+      border-radius: 9999px;
+      min-height: 44px;
       font-size: 17px;
       font-weight: 700;
       text-decoration: none;
       transition: all 0.2s;
-      box-shadow: 0 10px 40px rgba(224, 29, 29, 0.3);
+      box-shadow: 0 10px 40px rgba(237, 76, 76, 0.3);
     }
     
     .cta-button:hover {
       transform: translateY(-3px) scale(1.02);
-      box-shadow: 0 20px 60px rgba(224, 29, 29, 0.4);
-      background: var(--cherry-dark);
+      box-shadow: 0 20px 60px rgba(237, 76, 76, 0.4);
+      background: var(--hs-cherry-hover);
     }
     
     .cta-button svg {
@@ -210,9 +211,9 @@
     .demo-video {
       width: 100%;
       border-radius: 20px;
-      box-shadow: 0 40px 100px rgba(224, 29, 29, 0.15);
+      box-shadow: 0 40px 100px rgba(237, 76, 76, 0.15);
       aspect-ratio: 16/9;
-      border: 1px solid rgba(224, 29, 29, 0.1);
+      border: 1px solid rgba(237, 76, 76, 0.1);
     }
     
     /* Features */
@@ -237,16 +238,16 @@
     }
     
     .feature-card {
-      background: var(--cherry-bg);
-      border: 1px solid rgba(224, 29, 29, 0.1);
+      background: var(--hs-bg);
+      border: 1px solid var(--hs-border);
       padding: 32px;
-      border-radius: 20px;
+      border-radius: 16px;
       transition: all 0.3s;
     }
     
     .feature-card:hover {
       transform: translateY(-4px);
-      box-shadow: 0 20px 40px rgba(224, 29, 29, 0.1);
+      box-shadow: 0 20px 40px rgba(237, 76, 76, 0.1);
     }
     
     .feature-icon {
@@ -347,7 +348,7 @@
       font-weight: 800;
       font-size: 1.25rem;
       margin: 0 auto 20px;
-      box-shadow: 0 10px 30px rgba(224, 29, 29, 0.3);
+      box-shadow: 0 10px 30px rgba(237, 76, 76, 0.3);
     }
     
     .step h3 {
@@ -389,7 +390,7 @@
     footer {
       padding: 40px 20px;
       text-align: center;
-      border-top: 1px solid rgba(224, 29, 29, 0.1);
+      border-top: 1px solid rgba(237, 76, 76, 0.1);
       background: white;
     }
     
@@ -401,6 +402,9 @@
     footer a {
       color: var(--cherry);
       text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      min-height: 44px;
     }
     
     footer a:hover {
@@ -416,6 +420,9 @@
     
     .footer-links a {
       color: var(--text-muted);
+      display: inline-flex;
+      align-items: center;
+      min-height: 44px;
     }
     
     .footer-links a:hover {
@@ -425,7 +432,7 @@
     .disclaimer {
       margin-top: 24px;
       font-size: 11px;
-      color: #999;
+      color: var(--hs-ink-muted);
       max-width: 600px;
       margin-left: auto;
       margin-right: auto;
@@ -451,9 +458,7 @@
       Now available on Chrome Web Store
     </div>
     
-    <div class="logo">
-      <span class="logo-text">S</span>
-    </div>
+    <img class="logo" src="../icons/heysalad-icon.svg" alt="HeySalad">
     
     <h1>Sally</h1>
     <p class="tagline">AI that does your grocery shopping while you do literally anything else</p>

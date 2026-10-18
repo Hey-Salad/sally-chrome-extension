@@ -5,6 +5,27 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Sally - Signing In...</title>
   <style>
+    @font-face {
+      font-family: "Figtree";
+      src: url("../fonts/Figtree-VariableFont_wght.ttf") format("truetype");
+      font-weight: 100 900;
+      font-style: normal;
+      font-display: swap;
+    }
+
+    :root {
+      --hs-bg: #ffffff;
+      --hs-ink: #1f1416;
+      --hs-cherry: #ed4c4c;
+      --hs-peach: #faa09a;
+      --hs-light-peach: #ffd0cd;
+      --hs-border: #ffd0cd;
+      --hs-success-bg: #ffd0cd;
+      --hs-success-fg: #1f1416;
+      --hs-ink-muted: rgba(31, 20, 22, 0.62);
+      --hs-on-cherry: #ffffff;
+    }
+
     * {
       margin: 0;
       padding: 0;
@@ -12,21 +33,21 @@
     }
     
     body {
-      font-family: 'Figtree', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      font-family: "Figtree", sans-serif;
       display: flex;
       align-items: center;
       justify-content: center;
       min-height: 100vh;
-      background: #f9fafb;
-      color: #000;
+      background: var(--hs-bg);
+      color: var(--hs-ink);
     }
     
     .container {
       text-align: center;
       padding: 40px;
-      background: #fff;
+      background: var(--hs-bg);
       border-radius: 16px;
-      box-shadow: 0 4px 24px rgba(0, 0, 0, 0.08);
+      border: 1px solid var(--hs-border);
       max-width: 400px;
     }
     
@@ -43,15 +64,15 @@
     }
     
     p {
-      color: rgba(0, 0, 0, 0.53);
+      color: var(--hs-ink-muted);
       margin-bottom: 20px;
     }
     
     .spinner {
       width: 32px;
       height: 32px;
-      border: 3px solid #e5e7eb;
-      border-top-color: #E01D1D;
+      border: 3px solid var(--hs-light-peach);
+      border-top-color: var(--hs-cherry);
       border-radius: 50%;
       animation: spin 0.8s linear infinite;
       margin: 0 auto 20px;
@@ -62,11 +83,17 @@
     }
     
     .success {
-      color: #22c55e;
+      color: var(--hs-success-fg);
+      background: var(--hs-success-bg);
+      border-radius: 16px;
+      padding: 12px 16px;
     }
     
     .error {
-      color: #ef4444;
+      color: var(--hs-on-cherry);
+      background: var(--hs-cherry);
+      border-radius: 16px;
+      padding: 12px 16px;
     }
     
     .hidden {
@@ -75,7 +102,7 @@
     
     .debug {
       font-size: 10px;
-      color: #999;
+      color: var(--hs-ink-muted);
       margin-top: 20px;
       word-break: break-all;
     }

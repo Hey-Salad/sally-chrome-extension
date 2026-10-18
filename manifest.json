@@ -80,7 +80,7 @@
   
   "web_accessible_resources": [
     {
-      "resources": ["icons/*", "popup/qrcode.min.js"],
+      "resources": ["icons/*", "fonts/*", "popup/qrcode.min.js"],
       "matches": ["<all_urls>"]
     }
   ]

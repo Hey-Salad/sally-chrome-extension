@@ -980,7 +980,7 @@ async function generateQRCode() {
       text: qrData,
       width: 256,
       height: 256,
-      colorDark: '#000000',
+      colorDark: '#1f1416',
       colorLight: '#ffffff',
       correctLevel: QRCode.CorrectLevel.M // Medium error correction for better data capacity
     });
@@ -1259,7 +1259,7 @@ async function showExtensionQR() {
       text: qrData,
       width: 256,
       height: 256,
-      colorDark: '#000000',
+      colorDark: '#1f1416',
       colorLight: '#ffffff',
       correctLevel: QRCode.CorrectLevel.M
     });
