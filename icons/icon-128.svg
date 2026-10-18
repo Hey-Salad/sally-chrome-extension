@@ -1,19 +1,5 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<svg width="128" height="128" viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg">
-  <defs>
-    <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#10b981;stop-opacity:1" />
-      <stop offset="100%" style="stop-color:#059669;stop-opacity:1" />
-    </linearGradient>
-  </defs>
-
-  <!-- Background -->
-  <rect width="128" height="128" rx="25.6" fill="url(#grad)"/>
-
-  <!-- Salad layers (3 horizontal lines representing lettuce/ingredients) -->
-  <g stroke="white" stroke-width="10.24" stroke-linecap="round">
-    <line x1="32" y1="44.8" x2="96" y2="44.8" opacity="0.8"/>
-    <line x1="32" y1="64" x2="96" y2="64"/>
-    <line x1="32" y1="83.2" x2="96" y2="83.2" opacity="0.8"/>
-  </g>
+<!-- Tomato mark only. Paths copied from HeySalad-Logo-Black.svg. ViewBox is their tight bounds. No wordmark. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="219.697" height="185.118" viewBox="48.760 120.352 219.697 185.118" fill="none">
+<path d="M145.097 170.147C154.257 168.394 175.597 81.1472 241.842 141.731C291.097 186.778 268.143 273.072 204.51 295.056C140.875 317.039 100.097 299.981 81.5622 282.813C43.5973 247.647 15.0974 165.647 135.597 170.147L145.097 170.147Z" fill="#ED4C4C"/>
+<path d="M177.224 164.491C171.485 168.565 160.023 194.769 170.753 205.3C181.484 215.832 198.703 196.737 205.284 196.477C211.866 196.216 221.342 212.756 215.717 230.121C210.091 247.487 198.721 254.032 190.036 251.451C181.353 248.87 164.353 221.618 159.477 223.982C154.602 226.345 173.464 250.676 170.241 262.001C167.017 273.326 144.839 270.719 132.08 265.75C119.322 260.779 116.68 255.013 120.066 245.589C123.452 236.166 150.804 223.265 135.663 205.138C120.522 187.012 87.2368 204.989 88.189 247.141C89.1412 289.293 175.469 292.152 203.633 268.269C231.798 244.385 241.504 213.523 235.093 190.693C227.861 164.94 203.115 146.109 177.222 164.488L177.224 164.491Z" fill="#873535"/>
 </svg>
