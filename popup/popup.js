@@ -380,7 +380,7 @@ async function handleLogin(e) {
     showMessage('An error occurred. Please try again.', 'error');
   } finally {
     loginBtn.disabled = false;
-    loginBtn.innerHTML = '<span>Send Magic Link</span>';
+    loginBtn.innerHTML = '<span>Send magic link</span>';
   }
 }
 
@@ -419,7 +419,7 @@ async function handleVerifyToken() {
     showMessage('Verification failed. Please try again.', 'error');
   } finally {
     verifyBtn.disabled = false;
-    verifyBtn.innerHTML = '<span>Sign In</span>';
+    verifyBtn.innerHTML = '<span>Sign in</span>';
   }
 }
 
@@ -533,7 +533,7 @@ async function handleStartShopping() {
     showUserNotice('An error occurred. Please try again.', 'error');
   } finally {
     startBtn.disabled = false;
-    startBtn.innerHTML = '<span>🛒 Let Sally Shop!</span>';
+    startBtn.innerHTML = '<span>🛒 Let Sally shop!</span>';
   }
 }
 
@@ -890,7 +890,7 @@ async function handleSync() {
   } finally {
     if (syncBtn) {
       syncBtn.disabled = false;
-      syncBtn.innerHTML = '<span>Link Extension</span>';
+      syncBtn.innerHTML = '<span>Link extension</span>';
     }
   }
 }
@@ -980,7 +980,7 @@ async function generateQRCode() {
       text: qrData,
       width: 256,
       height: 256,
-      colorDark: '#000000',
+      colorDark: '#1f1416',
       colorLight: '#ffffff',
       correctLevel: QRCode.CorrectLevel.M // Medium error correction for better data capacity
     });
@@ -1024,7 +1024,7 @@ async function generateQRCode() {
   } finally {
     // Re-enable button
     generateQRBtn.disabled = false;
-    generateQRBtn.innerHTML = '<span>📱 Generate QR Code</span>';
+    generateQRBtn.innerHTML = '<span>📱 Generate QR code</span>';
   }
 }
 
@@ -1259,7 +1259,7 @@ async function showExtensionQR() {
       text: qrData,
       width: 256,
       height: 256,
-      colorDark: '#000000',
+      colorDark: '#1f1416',
       colorLight: '#ffffff',
       correctLevel: QRCode.CorrectLevel.M
     });

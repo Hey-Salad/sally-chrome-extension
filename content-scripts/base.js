@@ -2248,7 +2248,7 @@
         </div>
         <div class="heysalad-items" id="heysalad-items"></div>
         <div class="heysalad-actions">
-          <button class="heysalad-btn heysalad-btn-primary" id="heysalad-checkout" style="display:none;">${ICONS.cart} View Cart</button>
+          <button class="heysalad-btn heysalad-btn-primary" id="heysalad-checkout" style="display:none;">${ICONS.cart} View cart</button>
           <button class="heysalad-btn heysalad-btn-secondary" id="heysalad-stop">${ICONS.stop} Stop</button>
         </div>
       </div>
