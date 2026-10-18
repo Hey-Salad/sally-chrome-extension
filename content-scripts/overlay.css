@@ -246,6 +246,12 @@
   gap: 8px;
 }
 
+.heysalad-btn,
+.heysalad-open-panel,
+.heysalad-minimize {
+  text-transform: none;
+}
+
 .heysalad-btn {
   flex: 1;
   padding: 10px 16px;

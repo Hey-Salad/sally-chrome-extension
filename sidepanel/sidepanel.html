@@ -7,18 +7,14 @@
   <link rel="stylesheet" href="sidepanel.css">
 </head>
 <body class="sidepanel-shell">
-  <div class="surface-indicator">
-    <span class="surface-kicker">Sally Side Panel</span>
-    <button id="open-help-link" class="surface-link" type="button">Help</button>
-  </div>
-
-  <div id="panel-notice" class="panel-notice hidden"></div>
-
   <div class="container">
     <header class="header">
       <h1>Sally</h1>
       <span class="badge-brand">by HeySalad®</span>
+      <button id="open-help-link" class="surface-link" type="button">Help</button>
     </header>
+
+    <div id="panel-notice" class="panel-notice hidden"></div>
 
     <section id="auth-section" class="section hidden">
       <div class="auth-card">
@@ -32,7 +28,7 @@
               <input type="email" id="email" placeholder="you@example.com" required>
             </div>
             <button type="submit" class="btn btn-primary" id="login-btn">
-              <span>Sign In</span>
+              <span>Sign in</span>
             </button>
           </form>
         </div>
@@ -55,7 +51,7 @@
             <input type="text" id="token" placeholder="Paste token here if auto-detect fails...">
           </div>
           <button type="button" class="btn btn-secondary" id="verify-btn">
-            <span>Verify Token</span>
+            <span>Verify token</span>
           </button>
           <button type="button" class="btn btn-text" id="back-btn">
             ← Try different email
@@ -124,7 +120,7 @@
         <div class="mobile-link-banner">
           <span>📱 Have Sally Mobile?</span>
           <button id="show-qr-code-btn" class="btn btn-primary">
-            <span>📱 Show QR Code</span>
+            <span>📱 Show QR code</span>
           </button>
         </div>
 
@@ -142,7 +138,7 @@
             <option value="ocado">Ocado</option>
             <option value="waitrose">Waitrose</option>
           </select>
-          <p class="hint">Navigate to a supermarket site first, then click "Let Sally Shop!"</p>
+          <p class="hint">Navigate to a supermarket site first, then click "Let Sally shop!"</p>
         </div>
 
         <div class="input-group">
@@ -157,10 +153,10 @@
 
         <div class="button-group">
           <button id="start-btn" class="btn btn-primary">
-            <span>🛒 Let Sally Shop!</span>
+            <span>🛒 Let Sally shop!</span>
           </button>
           <button id="generate-qr-btn" class="btn btn-secondary">
-            <span>📱 Generate QR Code</span>
+            <span>📱 Generate QR code</span>
           </button>
         </div>
       </div>
@@ -184,7 +180,7 @@
         <div id="items-list" class="items-list"></div>
 
         <button id="stop-btn" class="btn btn-danger">
-          <span>⏹ Stop Shopping</span>
+          <span>⏹ Stop shopping</span>
         </button>
       </div>
 
@@ -194,10 +190,10 @@
         <p id="complete-summary"></p>
         <p id="complete-time" class="complete-time"></p>
         <button id="view-cart-btn" class="btn btn-primary">
-          <span>View Cart</span>
+          <span>View cart</span>
         </button>
         <button id="new-task-btn" class="btn btn-secondary">
-          <span>New Shopping List</span>
+          <span>New shopping list</span>
         </button>
       </div>
 
@@ -245,7 +241,7 @@
 
         <div class="qr-actions">
           <button class="btn btn-secondary" id="qr-switch-camera-btn" type="button">
-            Switch Camera
+            Switch camera
           </button>
           <button class="btn btn-text" id="qr-cancel-btn" type="button">
             Cancel
@@ -276,7 +272,7 @@
             <span>Cancel</span>
           </button>
           <button type="button" class="btn btn-text" id="extension-qr-refresh-btn">
-            <span>🔄 Generate New QR</span>
+            <span>🔄 Generate new QR</span>
           </button>
         </div>
 
@@ -295,7 +291,7 @@
         </div>
 
         <button type="button" class="btn btn-primary" id="sync-btn">
-          <span>Link Extension</span>
+          <span>Link extension</span>
         </button>
 
         <p id="sync-message" class="message hidden"></p>

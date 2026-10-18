@@ -155,11 +155,22 @@ button,
 .btn-text,
 .activity-action,
 .surface-link,
+.heysalad-btn,
+.heysalad-open-panel,
 input,
 select,
 textarea {
   min-height: 44px;
   font-family: inherit;
+}
+
+button,
+.btn,
+.btn-text,
+.activity-action,
+.surface-link,
+.cta-button {
+  text-transform: none;
 }
 
 .btn {
