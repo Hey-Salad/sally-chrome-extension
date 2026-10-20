@@ -19,3 +19,6 @@ Thumbs.db
 # Logs
 *.log
 npm-debug.log*
+
+# Built artefacts (release.yml builds the zip)
+*.zip
