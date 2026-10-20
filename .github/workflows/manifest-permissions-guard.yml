@@ -18,13 +18,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
+          persist-credentials: false
           fetch-depth: 0
 
       - name: Compare manifest permissions
         run: |
           set -euo pipefail
           BASE_REF="origin/${{ github.base_ref }}"
-          git fetch origin "${{ github.base_ref }}"
 
           base_perms="$(git show "$BASE_REF:manifest.json" | jq -c '{permissions: (.permissions // []), host_permissions: (.host_permissions // [])}')"
           head_perms="$(jq -c '{permissions: (.permissions // []), host_permissions: (.host_permissions // [])}' manifest.json)"
