@@ -497,14 +497,10 @@
           return;
         }
         
-        // If we have stored credentials, try to login
-        const credentials = await getStoredCredentials('tesco');
-        if (credentials) {
-          await performAutoLogin('tesco', credentials);
-        } else {
-          console.log('[Sally] ⚠️ No stored Tesco credentials, continuing as guest');
-          showToast('⚠️ Tesco login required - continuing as guest', 'warning');
-        }
+        // Store logins are never kept in extension storage (it is plaintext on
+        // disk). The member signs in to Tesco themselves; we continue as guest.
+        console.log('[Sally] ⚠️ Tesco login required, continuing as guest');
+        showToast('⚠️ Tesco login required - continuing as guest', 'warning');
       }
     }
   }
@@ -547,26 +543,6 @@
     }
   }
 
-  /**
-   * Get stored credentials for a store
-   */
-  async function getStoredCredentials(store) {
-    try {
-      const data = await chrome.storage.local.get([`credentials_${store}`]);
-      return data[`credentials_${store}`] || null;
-    } catch (e) {
-      return null;
-    }
-  }
-
-  /**
-   * Perform automatic login (placeholder for future implementation)
-   */
-  async function performAutoLogin(store, credentials) {
-    console.log('[Sally] 🔐 Auto-login for', store, 'not yet implemented');
-    // TODO: Implement automatic login flow
-  }
-  
   /**
    * 🏪 NEW: Navigate to correct store
    */
