@@ -12,7 +12,8 @@
     "version:minor": "node scripts/sync-version.mjs minor",
     "version:major": "node scripts/sync-version.mjs major",
     "prepackage:extension": "node scripts/sync-version.mjs",
-    "package:extension": "node scripts/package-extension.mjs"
+    "package:extension": "node scripts/package-extension.mjs",
+    "package:edge": "node scripts/package-edge.mjs"
   },
   "jest": {
     "testEnvironment": "jsdom",

@@ -156,7 +156,7 @@
           
           // Check for chrome.runtime.lastError
           if (chrome.runtime.lastError) {
-            console.error('Chrome runtime error:', chrome.runtime.lastError);
+            console.error('Extension runtime error:', chrome.runtime.lastError);
             showError('Extension error: ' + chrome.runtime.lastError.message);
             return;
           }

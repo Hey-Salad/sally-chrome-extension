@@ -1,7 +1,7 @@
 /**
- * WebSocket Client for Chrome Extension
- * 
- * Provides real-time communication between Sally Mobile App and Chrome Extension
+ * WebSocket Client for the Sally extension
+ *
+ * Provides real-time communication between the Sally mobile app and the Sally extension
  * via Cloudflare Durable Objects WebSocket infrastructure.
  * 
  * Performance: <100ms latency (20-50x faster than HTTP polling)
