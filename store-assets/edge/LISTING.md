@@ -13,6 +13,7 @@ The Chrome Web Store listing was not changed.
 | Field | Value |
 | --- | --- |
 | Extension name | Sally by HeySalad® |
+| Short name | Sally. Partner Center rejects a manifest `short_name` longer than 12 characters. The Edge package sets this in the build. The Chrome `manifest.json` in the repo stays `Sally by HeySalad®`. |
 | Short description | Taken from `manifest.json` `description`. Do not edit it in Partner Center. |
 | Category | Shopping |
 | Language | English (United Kingdom) |
@@ -207,6 +208,7 @@ Upload these separately in Partner Center. They are not inside the extension zip
 
 | Asset | Size | Path |
 | --- | --- | --- |
+| Store logo | 300×300 | `store-assets/edge/logo-300x300.png` |
 | Logo, meets the 128×128 minimum | 128×128 | `icons/icon128.png` |
 | Small promotional tile | 440×280 | `store-assets/chrome-store/small-promo-tile-440x280.png` |
 | Large promotional tile | 1400×560 | `store-assets/chrome-store/marquee-promo-tile-1400x560.png` |
@@ -216,7 +218,7 @@ Upload these separately in Partner Center. They are not inside the extension zip
 | Screenshot 4 | 1280×800 | `store-assets/chrome-store/screenshot-4-recipe-to-cart-1280x800.png` |
 | Screenshot 5 | 1280×800 | `store-assets/chrome-store/screenshot-5-repeat-workflows-1280x800.png` |
 
-Partner Center recommends a 300×300 logo. The packaged icon is 128×128, which meets the published minimum. A 300×300 logo is still worth uploading before submission.
+Upload `store-assets/edge/logo-300x300.png` as the store logo. It is the existing HeySalad mark from `icons/icon.svg`, drawn on a white background in cherry red and black. It is not inside the extension zip. The packaged toolbar icon remains 128×128.
 
 ## Notes for certification
 
@@ -236,7 +238,7 @@ Sign-in test:
 4. Use the magic link in that window.
 5. Sally should return to the side panel signed in.
 
-The redirect URI is https://<this-edge-extension-id>.chromiumapp.org/oauth. If sign-in fails before a supermarket test, the usual cause is that this Edge redirect URI is not allowlisted on oauth.heysalad.app yet. Shopping can still be tested while signed in to the supermarket itself.
+The Edge extension id is afkihbojmfcmeadbjchofeilhajemdme. The Chrome extension id is bocfhkkokpfjcgchdkenflanjbkmdika. The identity redirect URI is https://afkihbojmfcmeadbjchofeilhajemdme.chromiumapp.org/oauth. If sign-in fails before a supermarket test, that redirect may still need to be allowlisted on oauth.heysalad.app. Shopping can still be tested while signed in to the supermarket itself.
 
 Shopping test, Tesco (Ocado, Sainsbury's, ASDA, Waitrose, Morrisons, or Aldi are also valid):
 1. Sign in at https://www.tesco.com/groceries/ with an account you control.
@@ -261,6 +263,7 @@ The zip is built by `npm run package:edge`. The packager:
 
 - Requires Manifest V3.
 - Removes `update_url` and `key` if they are present, so Partner Center does not receive a Chrome update URL and Edge can assign a new extension id.
+- Sets `short_name` to `Sally` in the Edge zip only. Partner Center rejects a short name longer than 12 characters. The Chrome manifest in the repo is not edited, and the version stays 1.0.28.
 - Requires the name, short name, and toolbar title to say Sally.
 - Requires the name, short name, and description not to say Chrome.
 - Puts `manifest.json` at the root of the zip and omits docs, tests, and store screenshots.

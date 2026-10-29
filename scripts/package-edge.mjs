@@ -38,9 +38,16 @@ function prepareManifest(sourcePath) {
     throw new Error(`Invalid extension version: ${manifest.version}`);
   }
 
+  // Partner Center rejects short_name longer than 12 characters. The Chrome
+  // manifest keeps "Sally by HeySalad®". Only this Edge package uses "Sally".
+  manifest.short_name = 'Sally';
+
   assertSally(manifest.name, 'name');
   assertSally(manifest.short_name, 'short_name');
   assertSally(manifest.action?.default_title, 'action.default_title');
+  if ([...manifest.short_name].length > 12) {
+    throw new Error(`short_name must be 12 characters or fewer (got ${[...manifest.short_name].length})`);
+  }
 
   for (const field of ['name', 'short_name', 'description']) {
     const value = manifest[field];
@@ -169,7 +176,11 @@ try {
   if (packedManifest.update_url || packedManifest.key) {
     throw new Error('Edge manifest still contains update_url or key');
   }
-  if (packedManifest.version !== manifest.version || packedManifest.name !== manifest.name) {
+  if (
+    packedManifest.version !== manifest.version
+    || packedManifest.name !== manifest.name
+    || packedManifest.short_name !== 'Sally'
+  ) {
     throw new Error('Packed manifest does not match the Edge manifest');
   }
 
