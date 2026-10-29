@@ -29,7 +29,7 @@ const FREE_AUTONOMOUS_SHOP_LIMIT = 2;
 const SALLY_TAB_GROUP_TITLE = 'Sally';
 const SALLY_TAB_GROUP_COLOR = 'red';
 // AI calls are proxied through Sally API (Cloudflare AI Gateway)
-// to comply with Chrome Web Store MV3 policy (no remotely hosted code).
+// to comply with extension store MV3 policy (no remotely hosted code).
 const RECIPE_NOTIFICATION_PREFIX = 'sally_recipe_';
 
 // Import WebSocket client
@@ -1304,7 +1304,7 @@ async function composeChatReplyWithOpenAI(text, history, openaiKey, llmConfig = 
         {
           role: 'system',
           content: [
-            'You are Sally, a concise and friendly shopping assistant in a Chrome extension.',
+            'You are Sally, a concise and friendly shopping assistant in a Microsoft Edge extension.',
             'Answer normal chat naturally.',
             'Do not claim you are shopping unless a shopping tool has been confirmed.',
             'If the user asks to shop, ask for specific grocery items.',
@@ -1341,7 +1341,7 @@ function getLocalChatFallback(text) {
 
   if (isCapabilityQuestion(text)) {
     if (/\b(brow\w*|tab|tabs|site|sites|supermarket|supermarkets|across|multiple|different)\b/i.test(text)) {
-      return "I can work in Chrome on supported supermarket sites like Ocado, Tesco, Sainsbury's, ASDA, Waitrose, Morrisons, and Aldi. I use the current supermarket tab or open the right one, then run shopping as a tool inside this chat.";
+      return "I can work in Microsoft Edge on supported supermarket sites like Ocado, Tesco, Sainsbury's, ASDA, Waitrose, Morrisons, and Aldi. I use the current supermarket tab or open the right one, then run shopping as a tool inside this chat.";
     }
 
     if (/\b(other|else|tasks?|anything else|outside|besides)\b/i.test(text)) {
@@ -1395,7 +1395,7 @@ async function classifyMessageWithOpenAI(text, context, openaiKey, llmConfig = {
         {
           role: 'system',
           content: [
-            'Classify a Sally Chrome extension user message.',
+            'Classify a Sally extension user message.',
             'Return JSON only using the schema.',
             'Never classify capability, help, setup, or general questions as shopping_tool.',
             'Use shopping_tool only when the user asks to buy specific grocery or supermarket items.',
@@ -1423,7 +1423,6 @@ async function classifyMessageWithOpenAI(text, context, openaiKey, llmConfig = {
           schema: getClassifierSchema(),
         },
       },
-      reasoning: { effort: 'none' },
       max_output_tokens: 500,
     }),
   });
